@@ -25,7 +25,8 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
             "calls_llm": False,
             "local_first": True,
             "bm25_search": True,
-            "semantic_search": "optional_future",
+            "semantic_search": "optional_bundled_model2vec",
+            "hybrid_search": "optional_rrf",
             "safe_apply": True,
             "task_wait_state": True,
         },
@@ -35,6 +36,7 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
                 "kc init --yes",
                 "kc source add <file> --domain <domain> --yes",
                 "kc index build",
+                "kc index build --semantic",
                 "kc context prepare --ask '<task>' --shape knowledge_page --grounding required",
                 "Edit or create the requested artifact yourself; kc will not generate it.",
                 "kc artifact validate --file <path>",
@@ -140,11 +142,14 @@ def _commands() -> dict[str, Any]:
             "mutates": False,
             "syntax": "kc source inspect SOURCE_OR_PATH [--ranges]",
         },
-        "source.search": {"mutates": False, "syntax": "kc source search QUERY [--domain DOMAIN]"},
-        "index.build": {"mutates": True, "syntax": "kc index build"},
+        "source.search": {
+            "mutates": False,
+            "syntax": "kc source search QUERY [--domain DOMAIN] [--mode bm25|semantic|hybrid]",
+        },
+        "index.build": {"mutates": True, "syntax": "kc index build [--semantic]"},
         "context.prepare": {
             "mutates": False,
-            "syntax": "kc context prepare --ask ASK --shape SHAPE",
+            "syntax": "kc context prepare --ask ASK --shape SHAPE [--mode bm25|semantic|hybrid]",
         },
         "artifact.new": {
             "mutates": True,
@@ -173,7 +178,7 @@ def _commands() -> dict[str, Any]:
 
 
 def register(app: typer.Typer) -> None:
-    @app.command("guide")
+    @app.command("guide", help="Emit the machine-readable kc playbook for agents and tooling.")
     def guide(
         section: Annotated[
             str | None,

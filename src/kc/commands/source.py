@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 
 from kc.commands.common import load_ranges, load_sources, run, save_ranges, save_sources
+from kc.config import load_config
 from kc.errors import KcError
 from kc.fingerprints import normalized_fingerprint, raw_fingerprint
 from kc.ids import new_id
@@ -15,12 +16,13 @@ from kc.models.source import Authority, SourceRecord
 from kc.output import emit_success, warning
 from kc.paths import current_paths, ensure_under_root, repo_relative
 from kc.search.extract import extract_ranges, guess_media_type, is_text_like
+from kc.search.semantic import build_semantic_index
 from kc.store.sqlite import rebuild_index
 
-app = typer.Typer(help="Source registry commands.")
+app = typer.Typer(help="Register, inspect, index, and search local source material.")
 
 
-@app.command("add")
+@app.command("add", help="Register a local text/Markdown source, extract citation ranges, and update indexes.")
 def add(
     file: Annotated[str, typer.Argument(help="Local file path to register.")],
     domain: Annotated[list[str] | None, typer.Option("--domain", help="Domain tag.")] = None,
@@ -90,7 +92,10 @@ def add(
                 source.metadata["copied_to"] = copied_to
             save_sources([*sources, source])
             save_ranges([*load_ranges(), *ranges])
-            rebuild_index(paths.sqlite_path, load_sources(), load_ranges())
+            all_ranges = load_ranges()
+            rebuild_index(paths.sqlite_path, load_sources(), all_ranges)
+            if load_config().semantic_enabled:
+                build_semantic_index(paths.sqlite_path, all_ranges)
         emit_success(
             "source.add",
             {
@@ -117,7 +122,7 @@ def add(
     run("source.add", _run)
 
 
-@app.command("inspect")
+@app.command("inspect", help="Show source metadata, current fingerprint state, and optional extracted ranges.")
 def inspect(
     identifier: Annotated[str, typer.Argument(help="Source ID or source path.")],
     ranges: Annotated[bool, typer.Option("--ranges", help="Include source ranges.")] = False,
@@ -158,7 +163,7 @@ def inspect(
     run("source.inspect", _run)
 
 
-@app.command("search")
+@app.command("search", help="Search source ranges with BM25, semantic, or hybrid retrieval and return citation tokens.")
 def search(
     query: Annotated[str, typer.Argument(help="Search query.")],
     domain: Annotated[str | None, typer.Option("--domain", help="Domain filter.")] = None,
@@ -166,17 +171,26 @@ def search(
     mode: Annotated[str, typer.Option("--mode", help="bm25, semantic, or hybrid.")] = "bm25",
 ) -> None:
     def _run() -> None:
-        if mode not in {"bm25", "hybrid"}:
+        if mode not in {"bm25", "semantic", "hybrid"}:
             raise KcError(
                 code="KC_RETRIEVAL_MODEL_UNAVAILABLE",
-                message="Only BM25 retrieval is implemented in v1.",
+                message=f"Unsupported retrieval mode: {mode}",
                 details={"mode": mode},
             )
         paths = current_paths()
         from kc.search.fts import ensure_index, search_ranges
 
         ensure_index(paths.sqlite_path, paths.sources_jsonl, paths.ranges_jsonl)
-        results = search_ranges(paths.sqlite_path, query, domain=domain, limit=limit)
+        config = load_config()
+        results = search_ranges(
+            paths.sqlite_path,
+            query,
+            domain=domain,
+            limit=limit,
+            mode=mode,
+            rrf_k=config.rrf_k,
+            ranges=load_ranges(),
+        )
         emit_success(
             "source.search",
             {"query": query, "mode": mode, "total": len(results), "results": results},

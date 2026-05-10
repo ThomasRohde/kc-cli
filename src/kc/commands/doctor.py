@@ -5,11 +5,12 @@ from typing import Annotated
 
 import typer
 
-from kc.commands.common import run
+from kc.commands.common import load_ranges, run
 from kc.output import emit_success
 from kc.paths import current_paths
+from kc.search.semantic import semantic_index_status
 
-app = typer.Typer(help="Doctor commands.")
+app = typer.Typer(help="Inspect repository health, locks, and semantic index state.")
 
 
 @app.callback(invoke_without_command=True)
@@ -19,6 +20,7 @@ def doctor(ctx: typer.Context) -> None:
 
     def _run() -> None:
         paths = current_paths()
+        ranges = load_ranges() if paths.ranges_jsonl.exists() else []
         emit_success(
             "doctor",
             {
@@ -29,13 +31,14 @@ def doctor(ctx: typer.Context) -> None:
                 "locks": len(list(paths.locks_dir.glob("*.lock")))
                 if paths.locks_dir.exists()
                 else 0,
+                "semantic": semantic_index_status(paths.sqlite_path, ranges),
             },
         )
 
     run("doctor", _run)
 
 
-@app.command("locks")
+@app.command("locks", help="List lock files and optionally clear them after confirmation.")
 def locks(
     clear_stale: Annotated[bool, typer.Option("--clear-stale", help="Clear lock files.")] = False,
     yes: Annotated[bool, typer.Option("--yes", help="Confirm clearing lock files.")] = False,

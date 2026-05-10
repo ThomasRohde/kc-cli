@@ -41,7 +41,7 @@ from kc.paths import current_paths, ensure_under_root, repo_relative
 from kc.provenance.citations import validate_citations
 from kc.store.sqlite import get_idempotency, rebuild_index, save_idempotency, save_plan
 
-app = typer.Typer(help="Artifact commands.")
+app = typer.Typer(help="Create, validate, diff, and safely apply knowledge artifacts.")
 
 
 def _artifact_template(
@@ -88,7 +88,7 @@ def _artifact_template(
     return dump_frontmatter(frontmatter, body)
 
 
-@app.command("new")
+@app.command("new", help="Create a deterministic artifact skeleton; writes only with --yes.")
 def new(
     artifact_type: Annotated[str, typer.Option("--type", help="Artifact type.")] = "knowledge_page",
     path: Annotated[Path, typer.Option("--path", help="Artifact path.")] = ...,
@@ -256,7 +256,7 @@ def validate_artifact_file(
     }
 
 
-@app.command("validate")
+@app.command("validate", help="Validate artifact schema, required sections, citations, and provenance.")
 def validate(
     file: Annotated[Path, typer.Option("--file", help="Artifact file.")],
     schema: Annotated[str | None, typer.Option("--schema", help="Schema override.")] = None,
@@ -301,7 +301,7 @@ def validate(
     run("artifact.validate", _run)
 
 
-@app.command("diff")
+@app.command("diff", help="Build a structured apply plan and show artifact changes before mutation.")
 def diff(
     file: Annotated[Path, typer.Option("--file", help="Artifact file.")],
     against: Annotated[str | None, typer.Option("--against", help="Comparison baseline.")] = None,
@@ -378,7 +378,7 @@ def _record_from_validation(
     )
 
 
-@app.command("apply")
+@app.command("apply", help="Validate, lock, snapshot, register, and apply an artifact safely.")
 def apply(
     file: Annotated[Path | None, typer.Option("--file", help="Artifact file.")] = None,
     plan_file: Annotated[Path | None, typer.Option("--plan", help="Plan JSON file.")] = None,

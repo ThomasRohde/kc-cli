@@ -43,6 +43,20 @@ CREATE TABLE IF NOT EXISTS source_ranges (
   FOREIGN KEY(source_id) REFERENCES sources(source_id)
 );
 
+CREATE TABLE IF NOT EXISTS source_range_embeddings (
+  range_id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  source_fingerprint TEXT NOT NULL,
+  text_hash TEXT NOT NULL,
+  model_name TEXT NOT NULL,
+  model_checksum TEXT NOT NULL,
+  dimension INTEGER NOT NULL,
+  embedding BLOB NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(range_id) REFERENCES source_ranges(range_id),
+  FOREIGN KEY(source_id) REFERENCES sources(source_id)
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS source_ranges_fts USING fts5(
   range_id UNINDEXED,
   source_id UNINDEXED,
@@ -140,6 +154,7 @@ def rebuild_index(
             DROP TABLE IF EXISTS citation_edges;
             DROP TABLE IF EXISTS artifacts;
             DROP TABLE IF EXISTS source_ranges_fts;
+            DROP TABLE IF EXISTS source_range_embeddings;
             DROP TABLE IF EXISTS source_ranges;
             DROP TABLE IF EXISTS sources;
             """

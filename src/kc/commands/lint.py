@@ -13,7 +13,7 @@ from kc.output import emit, emit_success, envelope
 
 
 def register(app: typer.Typer) -> None:
-    @app.command("lint")
+    @app.command("lint", help="Run repository integrity checks for citations, stale sources, and orphaned artifacts.")
     def lint(
         checks: Annotated[
             str,

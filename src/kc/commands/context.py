@@ -4,12 +4,13 @@ from typing import Annotated
 
 import typer
 
-from kc.commands.common import load_artifacts, run
+from kc.commands.common import load_artifacts, load_ranges, run
+from kc.config import load_config
 from kc.output import emit_success, warning
 from kc.paths import current_paths
 from kc.search.fts import ensure_index, search_ranges
 
-app = typer.Typer(help="Context preparation commands.")
+app = typer.Typer(help="Prepare grounded source context for an external agent.")
 
 
 def _parse_budget(raw: str | None) -> dict[str, int]:
@@ -25,7 +26,7 @@ def _parse_budget(raw: str | None) -> dict[str, int]:
     return parsed
 
 
-@app.command("prepare")
+@app.command("prepare", help="Search sources and emit evidence, policies, and next commands without answering.")
 def prepare(
     ask: Annotated[str, typer.Option("--ask", help="Knowledge task or question.")],
     shape: Annotated[
@@ -39,6 +40,9 @@ def prepare(
     budget: Annotated[
         str | None, typer.Option("--budget", help="max_sources=N,max_ranges=N")
     ] = None,
+    mode: Annotated[
+        str, typer.Option("--mode", help="Retrieval mode: bm25, semantic, or hybrid.")
+    ] = "bm25",
 ) -> None:
     def _run() -> None:
         paths = current_paths()
@@ -49,6 +53,9 @@ def prepare(
             ask,
             domain=domain,
             limit=limits["max_ranges"],
+            mode=mode,
+            rrf_k=load_config().rrf_k,
+            ranges=load_ranges(),
         )
         seen_sources: set[str] = set()
         filtered = []
@@ -84,6 +91,7 @@ def prepare(
             "context.prepare",
             {
                 "search_query": ask,
+                "mode": mode,
                 "candidate_ranges": filtered,
                 "existing_artifacts": existing,
                 "required_output_shape": shape,
@@ -109,7 +117,7 @@ def prepare(
                     f"kc artifact apply --file {target or '<artifact>'} --yes",
                 ],
             },
-            target={"ask": ask, "shape": shape, "target": target},
+            target={"ask": ask, "shape": shape, "target": target, "mode": mode},
             warnings=warnings,
         )
 

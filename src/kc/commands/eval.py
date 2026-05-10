@@ -11,10 +11,10 @@ from kc.output import emit_success
 from kc.paths import current_paths
 from kc.search.fts import ensure_index, search_ranges
 
-app = typer.Typer(help="Deterministic retrieval eval commands.")
+app = typer.Typer(help="Run deterministic retrieval evaluation packs.")
 
 
-@app.command("run")
+@app.command("run", help="Run retrieval eval cases from a YAML pack.")
 def run_eval(
     pack: Annotated[Path | None, typer.Option("--pack", help="Eval pack YAML.")] = None,
 ) -> None:

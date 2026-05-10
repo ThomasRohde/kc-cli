@@ -11,10 +11,10 @@ from kc.output import emit, emit_success, envelope
 from kc.paths import current_paths
 from kc.provenance.citations import validate_citations
 
-app = typer.Typer(help="Citation commands.")
+app = typer.Typer(help="Validate kc citation tokens and source-range provenance.")
 
 
-@app.command("check")
+@app.command("check", help="Check citations in one artifact or all registered artifacts.")
 def check(
     file: Annotated[Path | None, typer.Option("--file", help="Artifact file.")] = None,
     all: Annotated[bool, typer.Option("--all", help="Check all registered artifacts.")] = False,

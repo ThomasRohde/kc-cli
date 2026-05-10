@@ -12,7 +12,7 @@ from kc.output import emit_success
 
 
 def register(app: typer.Typer) -> None:
-    @app.command("export")
+    @app.command("export", help="Export registered knowledge as JSON, Markdown bundle, or llms.txt.")
     def export_command(
         export_format: Annotated[
             str,

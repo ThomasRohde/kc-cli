@@ -35,6 +35,13 @@ semantic_enabled = false
 hybrid_enabled = false
 rrf_k = 60
 
+[index.semantic]
+provider = "model2vec"
+model = "potion-base-8M"
+dimension = 256
+checksum = "sha256:aef1c5e1fd70060804f5295ec8e9ab3ed62e50e79b208435fb77e15c5bf94bb8"
+purpose = "ranking_only"
+
 [mutation]
 default_dry_run = true
 require_yes_for_apply = true
@@ -77,6 +84,18 @@ class KcConfig:
     @property
     def waiting_exit_code(self) -> int:
         return int((self.raw or {}).get("task", {}).get("waiting_exit_code", 40))
+
+    @property
+    def semantic_enabled(self) -> bool:
+        return bool((self.raw or {}).get("index", {}).get("semantic_enabled", False))
+
+    @property
+    def hybrid_enabled(self) -> bool:
+        return bool((self.raw or {}).get("index", {}).get("hybrid_enabled", False))
+
+    @property
+    def rrf_k(self) -> int:
+        return int((self.raw or {}).get("index", {}).get("rrf_k", 60))
 
 
 def load_config(root: Path | None = None, *, required: bool = False) -> KcConfig:

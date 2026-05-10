@@ -14,7 +14,7 @@ from kc.store.sqlite import init_db
 
 
 def register(app: typer.Typer) -> None:
-    @app.command("init")
+    @app.command("init", help="Create the repo-local kc layout, config, JSONL stores, and SQLite state.")
     def init_command(
         profile: Annotated[
             str, typer.Option("--profile", help="Initialization profile.")

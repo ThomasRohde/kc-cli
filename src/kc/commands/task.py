@@ -16,14 +16,14 @@ from kc.paths import current_paths
 from kc.search.fts import ensure_index, search_ranges
 from kc.store.sqlite import load_task, save_task
 
-app = typer.Typer(help="Task commands.")
+app = typer.Typer(help="Manage durable task records for external-agent workflows.")
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-@app.command("start")
+@app.command("start", help="Create a task, gather candidate ranges, and optionally enter awaiting-agent state.")
 def start(
     goal: Annotated[str, typer.Option("--goal", help="Knowledge-work goal.")],
     shape: Annotated[
@@ -99,7 +99,7 @@ def start(
     run("task.start", _run)
 
 
-@app.command("status")
+@app.command("status", help="Show a compact task status and next commands.")
 def status(task_id: Annotated[str, typer.Option("--task-id", help="Task ID.")]) -> None:
     def _run() -> None:
         task = load_task(current_paths().sqlite_path, task_id)
@@ -119,7 +119,7 @@ def status(task_id: Annotated[str, typer.Option("--task-id", help="Task ID.")]) 
     run("task.status", _run)
 
 
-@app.command("inspect")
+@app.command("inspect", help="Show the full stored task record.")
 def inspect(task_id: Annotated[str, typer.Option("--task-id", help="Task ID.")]) -> None:
     def _run() -> None:
         task = load_task(current_paths().sqlite_path, task_id)
@@ -132,7 +132,7 @@ def inspect(task_id: Annotated[str, typer.Option("--task-id", help="Task ID.")])
     run("task.inspect", _run)
 
 
-@app.command("resume")
+@app.command("resume", help="Resume an awaiting task with a structured event payload.")
 def resume(
     task_id: Annotated[str, typer.Option("--task-id", help="Task ID.")],
     event: Annotated[str, typer.Option("--event", help="Event name.")],

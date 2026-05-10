@@ -65,3 +65,24 @@ def test_invalid_format_returns_structured_error() -> None:
     payload = parse(result.output)
     assert payload["ok"] is False
     assert payload["errors"][0]["code"] == "KC_UNSUPPORTED_FEATURE"
+
+
+def test_help_outputs_include_command_explanations() -> None:
+    root = runner.invoke(app, ["--help"])
+    assert root.exit_code == 0
+    assert "Emit the machine-readable kc playbook" in root.output
+    assert "Create the repo-local kc layout" in root.output
+    assert "Run repository integrity checks" in root.output
+    assert "Export registered knowledge" in root.output
+
+    source = runner.invoke(app, ["source", "--help"])
+    assert source.exit_code == 0
+    assert "Register a local text/Markdown source" in source.output
+    assert "Show source metadata" in source.output
+    assert "Search source ranges with BM25" in source.output
+
+    artifact = runner.invoke(app, ["artifact", "--help"])
+    assert artifact.exit_code == 0
+    assert "Create a deterministic artifact skeleton" in artifact.output
+    assert "Validate artifact schema" in artifact.output
+    assert "Validate, lock, snapshot" in artifact.output
