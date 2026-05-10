@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kc-cli"
+dynamic = ["version"]
+description = "Deterministic knowledge compiler harness for external agents"
+readme = "kc-design-v1.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [
+  { name = "Thomas Rohde" }
+]
+keywords = ["knowledge", "cli", "agent", "search", "provenance", "citations"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed"
+]
+dependencies = [
+  "typer>=0.12",
+  "pydantic>=2.0",
+  "rich>=13.0",
+  "orjson>=3.9",
+  "python-ulid>=3.0",
+  "PyYAML>=6.0"
+]
+
+[project.scripts]
+kc = "kc.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.4",
+  "pyright>=1.1"
+]
+
+[tool.hatch.version]
+path = "src/kc/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra -q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 140
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+include = ["src"]

@@ -1,0 +1,39 @@
+schema_version = "kc.config.v1"
+project_id = "kc-project"
+data_dir = "knowledge"
+state_dir = ".kc"
+
+[output]
+default_format = "json"
+human_format = "table"
+llm_env_var = "LLM"
+
+[source_policy]
+copy_sources = false
+require_fingerprint = true
+require_locator = true
+allow_unregistered_citations = false
+
+[citation_policy]
+required_for_material_claims = true
+citation_token_pattern = "kc_v1"
+fail_on_stale_source_fingerprint = true
+
+[index]
+fts_enabled = true
+semantic_enabled = false
+hybrid_enabled = false
+rrf_k = 60
+
+[mutation]
+default_dry_run = true
+require_yes_for_apply = true
+atomic_writes = true
+create_snapshots = true
+require_idempotency_key_for_apply = false
+update_log = true
+allow_skip_validate_in_llm = false
+
+[task]
+enable_wait_exit_code = true
+waiting_exit_code = 40

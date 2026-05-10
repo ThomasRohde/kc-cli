@@ -1,0 +1,5 @@
+schema_version: kc.eval_pack.v1
+cases:
+  - id: ownership
+    ask: ownership lifecycle
+    expected_source_ids: []
