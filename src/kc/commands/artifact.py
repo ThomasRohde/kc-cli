@@ -19,6 +19,7 @@ from kc.artifacts.markdown import (
 from kc.atomic_write import atomic_write_text, copy_snapshot
 from kc.commands.common import (
     artifact_by_path,
+    json_dumps,
     load_artifacts,
     load_citation_edges,
     load_ranges,
@@ -36,6 +37,7 @@ from kc.ids import new_id
 from kc.locks import FileLock
 from kc.models.artifact import ArtifactRecord, SourceRef
 from kc.models.citation import CitationEdgeRecord
+from kc.models.plan import PlanRecord
 from kc.output import emit, emit_success, envelope, is_llm_mode
 from kc.paths import current_paths, ensure_under_root, repo_relative
 from kc.provenance.citations import validate_citations
@@ -90,9 +92,9 @@ def _artifact_template(
 
 @app.command("new", help="Create a deterministic artifact skeleton; writes only with --yes.")
 def new(
+    path: Annotated[Path, typer.Option("--path", help="Artifact path.")],
+    title: Annotated[str, typer.Option("--title", help="Artifact title.")],
     artifact_type: Annotated[str, typer.Option("--type", help="Artifact type.")] = "knowledge_page",
-    path: Annotated[Path, typer.Option("--path", help="Artifact path.")] = ...,
-    title: Annotated[str, typer.Option("--title", help="Artifact title.")] = ...,
     domain: Annotated[list[str] | None, typer.Option("--domain", help="Domain tag.")] = None,
     source_id: Annotated[
         list[str] | None, typer.Option("--source-id", help="Source reference.")
@@ -378,6 +380,114 @@ def _record_from_validation(
     )
 
 
+def _target_from_plan_path(path: str) -> Path:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return ensure_under_root(candidate)
+    return ensure_under_root((Path.cwd() / candidate).resolve())
+
+
+def _load_plan_file(plan_file: Path) -> PlanRecord:
+    plan_path = ensure_under_root((Path.cwd() / plan_file).resolve())
+    try:
+        data = orjson.loads(plan_path.read_bytes())
+    except orjson.JSONDecodeError as exc:
+        raise KcError(
+            code="KC_JSON_INVALID",
+            message=f"Invalid plan JSON: {exc}",
+            details={"path": repo_relative(plan_path)},
+        ) from exc
+    if not isinstance(data, dict) or data.get("schema_version") != "kc.plan.v1":
+        raise KcError(
+            code="KC_PLAN_PRECONDITION_FAILED",
+            message="Plan file must use schema_version kc.plan.v1.",
+            details={"path": repo_relative(plan_path)},
+        )
+    try:
+        return PlanRecord.model_validate(data)
+    except Exception as exc:
+        raise KcError(
+            code="KC_PLAN_PRECONDITION_FAILED",
+            message=f"Invalid kc plan record: {exc}",
+            details={"path": repo_relative(plan_path)},
+        ) from exc
+
+
+def _plan_operation(plan: PlanRecord) -> tuple[str, Path]:
+    if plan.command != "artifact.apply":
+        raise KcError(
+            code="KC_PLAN_PRECONDITION_FAILED",
+            message=f"Plan command is not artifact.apply: {plan.command}",
+            details={"plan_id": plan.plan_id, "command": plan.command},
+        )
+    if len(plan.operations) != 1:
+        raise KcError(
+            code="KC_PLAN_PRECONDITION_FAILED",
+            message="Artifact apply plans must contain exactly one operation.",
+            details={"plan_id": plan.plan_id, "operations": len(plan.operations)},
+        )
+    operation = plan.operations[0]
+    return operation.path, _target_from_plan_path(operation.path)
+
+
+def _enforce_plan_preconditions(
+    plan: PlanRecord,
+    target: Path,
+    existing: ArtifactRecord | None,
+    validation: dict[str, Any],
+) -> None:
+    operation_path, operation_target = _plan_operation(plan)
+    if operation_target != target:
+        raise KcError(
+            code="KC_PLAN_PRECONDITION_FAILED",
+            message="Plan operation path does not match the requested artifact.",
+            details={
+                "plan_id": plan.plan_id,
+                "operation_path": operation_path,
+                "target": repo_relative(target),
+            },
+        )
+    for condition in plan.preconditions:
+        if condition.kind == "file_exists" and condition.expected == "true" and not target.exists():
+            raise KcError(
+                code="KC_PLAN_PRECONDITION_FAILED",
+                message="Plan precondition failed: artifact file must exist.",
+                details={"plan_id": plan.plan_id, "path": repo_relative(target)},
+            )
+
+    operation = plan.operations[0]
+    actual_before = existing.fingerprint if existing else None
+    if operation.before_fingerprint != actual_before:
+        raise KcError(
+            code="KC_PLAN_PRECONDITION_FAILED",
+            message="Plan registry fingerprint precondition failed.",
+            details={
+                "plan_id": plan.plan_id,
+                "expected": operation.before_fingerprint,
+                "actual": actual_before,
+                "path": repo_relative(target),
+            },
+        )
+    actual_after = str(validation["fingerprint"])
+    if operation.after_fingerprint != actual_after:
+        raise KcError(
+            code="KC_PLAN_PRECONDITION_FAILED",
+            message="Plan artifact fingerprint precondition failed.",
+            details={
+                "plan_id": plan.plan_id,
+                "expected": operation.after_fingerprint,
+                "actual": actual_after,
+                "path": repo_relative(target),
+            },
+        )
+
+
+def _save_plan_file(plan: PlanRecord) -> str:
+    plan_path = current_paths().plans_dir / f"{plan.plan_id}.json"
+    atomic_write_text(plan_path, json_dumps(plan.model_dump(mode="json")) + "\n")
+    return repo_relative(plan_path)
+
+
 @app.command("apply", help="Validate, lock, snapshot, register, and apply an artifact safely.")
 def apply(
     file: Annotated[Path | None, typer.Option("--file", help="Artifact file.")] = None,
@@ -399,13 +509,29 @@ def apply(
                 code="KC_ARTIFACT_NOT_FOUND",
                 message="Provide --file or --plan.",
             )
-        target: Path
+        loaded_plan: PlanRecord | None = None
         if file is not None:
             target = ensure_under_root((Path.cwd() / file).resolve())
         else:
-            data = orjson.loads((Path.cwd() / plan_file).read_bytes())  # type: ignore[arg-type]
-            op_path = data["operations"][0]["path"]
-            target = ensure_under_root((Path.cwd() / op_path).resolve())
+            if plan_file is None:
+                raise KcError(
+                    code="KC_ARTIFACT_NOT_FOUND",
+                    message="Provide --file or --plan.",
+                )
+            loaded_plan = _load_plan_file(plan_file)
+            _operation_path, target = _plan_operation(loaded_plan)
+        if file is not None and plan_file is not None:
+            loaded_plan = _load_plan_file(plan_file)
+            _operation_path, plan_target = _plan_operation(loaded_plan)
+            if plan_target != target:
+                raise KcError(
+                    code="KC_PLAN_PRECONDITION_FAILED",
+                    message="--file does not match --plan operation path.",
+                    details={
+                        "file": repo_relative(target),
+                        "plan_target": repo_relative(plan_target),
+                    },
+                )
         effective_dry_run = dry_run or not yes
         previous = get_idempotency(paths.sqlite_path, idempotency_key) if idempotency_key else None
         if previous:
@@ -437,12 +563,25 @@ def apply(
                 details={"path": repo_relative(target), "errors": validation["errors"]},
             )
         existing = artifact_by_path(target)
-        plan, diff_text = build_artifact_plan(
-            target,
-            registered_fingerprint=existing.fingerprint if existing else None,
-            mode="dry_run" if effective_dry_run else "apply",
-            idempotency_key=idempotency_key,
-        )
+        if loaded_plan is not None:
+            _enforce_plan_preconditions(loaded_plan, target, existing, validation)
+            plan = loaded_plan.model_copy(
+                update={
+                    "mode": "dry_run" if effective_dry_run else "apply",
+                    "idempotency_key": idempotency_key or loaded_plan.idempotency_key,
+                }
+            )
+            _discarded_plan, diff_text = build_artifact_plan(
+                target,
+                registered_fingerprint=existing.fingerprint if existing else None,
+            )
+        else:
+            plan, diff_text = build_artifact_plan(
+                target,
+                registered_fingerprint=existing.fingerprint if existing else None,
+                mode="dry_run" if effective_dry_run else "apply",
+                idempotency_key=idempotency_key,
+            )
         if effective_dry_run:
             emit_success(
                 "artifact.apply",
@@ -485,6 +624,7 @@ def apply(
             if cfg.update_log:
                 _append_log(paths.log_path, artifact, plan.plan_id)
             save_plan(paths.sqlite_path, plan)
+            plan_path = _save_plan_file(plan)
             rebuild_index(
                 paths.sqlite_path,
                 load_sources(),
@@ -498,6 +638,7 @@ def apply(
                 "artifact": artifact.model_dump(mode="json"),
                 "citation_edges": len(edges),
                 "plan": plan.model_dump(mode="json"),
+                "plan_path": plan_path,
                 "snapshot": {
                     "schema_version": "kc.snapshot.v1",
                     "snapshot_id": new_id("snap"),

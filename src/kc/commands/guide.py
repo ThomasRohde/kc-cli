@@ -35,6 +35,7 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
                 "kc guide --section bootstrap",
                 "kc init --yes",
                 "kc source add <file> --domain <domain> --yes",
+                "kc source refresh <source-id-or-path> --dry-run",
                 "kc index build",
                 "kc index build --semantic",
                 "kc context prepare --ask '<task>' --shape knowledge_page --grounding required",
@@ -77,6 +78,12 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
                 "kc source add docs/policy.md --domain policy --dry-run",
                 "kc source add docs/policy.md --domain policy --yes",
                 "kc source search 'ownership responsibilities' --domain policy",
+            ],
+            "refresh_source": [
+                "kc source inspect docs/policy.md --ranges",
+                "kc source refresh docs/policy.md --dry-run",
+                "kc source refresh docs/policy.md --yes",
+                "kc lint",
             ],
             "create_page": [
                 "kc context prepare --ask 'Create an ownership page' --shape knowledge_page --target knowledge/wiki/ownership.md",
@@ -142,6 +149,10 @@ def _commands() -> dict[str, Any]:
             "mutates": False,
             "syntax": "kc source inspect SOURCE_OR_PATH [--ranges]",
         },
+        "source.refresh": {
+            "mutates": True,
+            "syntax": "kc source refresh SOURCE_OR_PATH --dry-run|--yes",
+        },
         "source.search": {
             "mutates": False,
             "syntax": "kc source search QUERY [--domain DOMAIN] [--mode bm25|semantic|hybrid]",
@@ -159,7 +170,7 @@ def _commands() -> dict[str, Any]:
         "artifact.diff": {"mutates": False, "syntax": "kc artifact diff --file PATH"},
         "artifact.apply": {
             "mutates": True,
-            "syntax": "kc artifact apply --file PATH --dry-run|--yes",
+            "syntax": "kc artifact apply --file PATH|--plan PLAN --dry-run|--yes [--idempotency-key KEY]",
         },
         "citation.check": {"mutates": False, "syntax": "kc citation check --file PATH|--all"},
         "lint": {"mutates": False, "syntax": "kc lint"},

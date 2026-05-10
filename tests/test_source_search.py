@@ -58,3 +58,48 @@ def test_source_inspect_reports_staleness(tmp_path: Path, monkeypatch) -> None:
     payload = parse(inspect.output)
     assert payload["result"]["stale"] is True
     assert payload["result"]["ranges"]
+
+
+def test_source_refresh_dry_run_and_yes_preserves_source_id(
+    tmp_path: Path, monkeypatch
+) -> None:
+    init_repo(tmp_path, monkeypatch)
+    source = tmp_path / "policy.md"
+    source.write_text("original ownership text\n", encoding="utf-8")
+    add = runner.invoke(app, ["source", "add", "policy.md", "--domain", "bcm", "--yes"])
+    source_id = parse(add.output)["result"]["source_id"]
+    old_fingerprint = parse(add.output)["result"]["fingerprint"]
+    old_ranges = parse(
+        runner.invoke(app, ["source", "inspect", source_id, "--ranges"]).output
+    )["result"]["ranges"]
+
+    source.write_text("changed lifecycle text\n", encoding="utf-8")
+    dry = runner.invoke(app, ["source", "refresh", "policy.md", "--dry-run"])
+    assert dry.exit_code == 0
+    dry_payload = parse(dry.output)
+    assert dry_payload["result"]["dry_run"] is True
+    assert dry_payload["result"]["source_id"] == source_id
+    assert dry_payload["result"]["old_fingerprint"] == old_fingerprint
+    assert dry_payload["result"]["new_fingerprint"] != old_fingerprint
+    assert dry_payload["result"]["index_rebuilt"] is False
+
+    inspect_after_dry_run = runner.invoke(app, ["source", "inspect", source_id])
+    assert parse(inspect_after_dry_run.output)["result"]["stale"] is True
+
+    refresh = runner.invoke(app, ["source", "refresh", source_id, "--yes"])
+    assert refresh.exit_code == 0
+    refresh_payload = parse(refresh.output)
+    assert refresh_payload["result"]["source_id"] == source_id
+    assert refresh_payload["result"]["ranges_removed"] == len(old_ranges)
+    assert refresh_payload["result"]["ranges_extracted"] >= 1
+    assert refresh_payload["result"]["index_rebuilt"] is True
+
+    inspect = runner.invoke(app, ["source", "inspect", source_id, "--ranges"])
+    inspect_payload = parse(inspect.output)
+    assert inspect_payload["result"]["stale"] is False
+    assert inspect_payload["result"]["source"]["source_id"] == source_id
+    assert inspect_payload["result"]["ranges"][0]["source_id"] == source_id
+    assert "changed lifecycle text" in inspect_payload["result"]["ranges"][0]["excerpt"]
+
+    lint = runner.invoke(app, ["lint", "--checks", "stale"])
+    assert lint.exit_code == 0

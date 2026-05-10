@@ -7,19 +7,85 @@ from typing import Annotated
 
 import typer
 
-from kc.commands.common import load_ranges, load_sources, run, save_ranges, save_sources
+from kc.commands.common import (
+    load_artifacts,
+    load_citation_edges,
+    load_ranges,
+    load_sources,
+    run,
+    save_ranges,
+    save_sources,
+)
 from kc.config import load_config
 from kc.errors import KcError
 from kc.fingerprints import normalized_fingerprint, raw_fingerprint
 from kc.ids import new_id
 from kc.models.source import Authority, SourceRecord
+from kc.models.source_range import SourceRangeRecord
 from kc.output import emit_success, warning
 from kc.paths import current_paths, ensure_under_root, repo_relative
+from kc.provenance.citations import find_range_for_token, parse_markdown_citations
 from kc.search.extract import extract_ranges, guess_media_type, is_text_like
-from kc.search.semantic import build_semantic_index
+from kc.search.semantic import build_semantic_index, semantic_index_status
 from kc.store.sqlite import rebuild_index
 
 app = typer.Typer(help="Register, inspect, index, and search local source material.")
+
+
+def _resolve_source(identifier: str) -> tuple[SourceRecord, Path]:
+    sources = load_sources()
+    source = next((candidate for candidate in sources if candidate.source_id == identifier), None)
+    if source is None:
+        maybe_uri = f"file:{repo_relative((Path.cwd() / identifier).resolve())}"
+        source = next((candidate for candidate in sources if candidate.uri == maybe_uri), None)
+    if source is None:
+        raise KcError(
+            code="KC_SOURCE_NOT_FOUND",
+            message=f"Source not found: {identifier}",
+            details={"identifier": identifier},
+        )
+
+    original = source.metadata.get("original_path")
+    if not isinstance(original, str):
+        raise KcError(
+            code="KC_SOURCE_NOT_FOUND",
+            message=f"Source does not have a local original path: {source.source_id}",
+            details={"source_id": source.source_id},
+        )
+    return source, ensure_under_root((Path.cwd() / original).resolve())
+
+
+def _impacted_artifacts(
+    source_id: str, new_ranges: list[SourceRangeRecord]
+) -> list[dict[str, str | None]]:
+    impacts: list[dict[str, str | None]] = []
+    for edge in load_citation_edges():
+        if edge.source_id != source_id:
+            continue
+        parsed = parse_markdown_citations(edge.citation_token)
+        if not parsed:
+            impacts.append(
+                {
+                    "artifact_id": edge.artifact_id,
+                    "artifact_path": edge.artifact_path,
+                    "citation_token": edge.citation_token,
+                    "old_range_id": edge.range_id,
+                    "reason": "invalid_token",
+                }
+            )
+            continue
+        if find_range_for_token(parsed[0], new_ranges) is None:
+            impacts.append(
+                {
+                    "artifact_id": edge.artifact_id,
+                    "artifact_path": edge.artifact_path,
+                    "citation_token": edge.citation_token,
+                    "old_range_id": edge.range_id,
+                    "reason": "line_range_no_longer_resolves",
+                }
+            )
+
+    return impacts
 
 
 @app.command("add", help="Register a local text/Markdown source, extract citation ranges, and update indexes.")
@@ -161,6 +227,91 @@ def inspect(
         emit_success("source.inspect", result, target={"identifier": identifier})
 
     run("source.inspect", _run)
+
+
+@app.command("refresh", help="Refresh a registered local source, replace its ranges, and rebuild BM25 indexes.")
+def refresh(
+    identifier: Annotated[str, typer.Argument(help="Source ID or source path.")],
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without writing.")] = False,
+    yes: Annotated[bool, typer.Option("--yes", help="Refresh the source and ranges.")] = False,
+) -> None:
+    def _run() -> None:
+        paths = current_paths()
+        source, source_path = _resolve_source(identifier)
+        if not source_path.exists():
+            raise KcError(
+                code="KC_FILE_NOT_FOUND",
+                message=f"Source file not found: {repo_relative(source_path)}",
+                details={"source_id": source.source_id, "path": repo_relative(source_path)},
+            )
+        media_type = guess_media_type(source_path)
+        if not is_text_like(source_path, media_type):
+            raise KcError(
+                code="KC_SOURCE_UNSUPPORTED_MEDIA_TYPE",
+                message=f"Unsupported media type for v1 extraction: {media_type}",
+                details={"path": repo_relative(source_path), "media_type": media_type},
+            )
+
+        old_ranges = [item for item in load_ranges() if item.source_id == source.source_id]
+        new_raw_fingerprint = raw_fingerprint(source_path)
+        new_normalized_fingerprint = normalized_fingerprint(source_path)
+        refreshed_source = source.model_copy(
+            update={
+                "display_name": source_path.name,
+                "media_type": media_type,
+                "fingerprint": new_raw_fingerprint,
+                "raw_fingerprint": new_raw_fingerprint,
+                "normalized_fingerprint": new_normalized_fingerprint,
+                "status": "active",
+                "metadata": {
+                    **source.metadata,
+                    "original_path": repo_relative(source_path),
+                    "repo_relative": True,
+                },
+            }
+        )
+        new_ranges = extract_ranges(source_path, source.source_id, refreshed_source.fingerprint)
+        impacts = _impacted_artifacts(source.source_id, new_ranges)
+        effective_dry_run = dry_run or not yes
+        semantic_before = semantic_index_status(paths.sqlite_path, load_ranges())
+        semantic_index_stale = bool(
+            semantic_before.get("index_metadata") or semantic_before.get("vector_count")
+        )
+
+        if not effective_dry_run:
+            sources = [
+                refreshed_source if item.source_id == source.source_id else item
+                for item in load_sources()
+            ]
+            ranges = [
+                item for item in load_ranges() if item.source_id != source.source_id
+            ] + new_ranges
+            save_sources(sources)
+            save_ranges(ranges)
+            rebuild_index(paths.sqlite_path, sources, ranges, load_artifacts(), load_citation_edges())
+
+        emit_success(
+            "source.refresh",
+            {
+                "dry_run": effective_dry_run,
+                "source_id": source.source_id,
+                "uri": source.uri,
+                "old_fingerprint": source.fingerprint,
+                "new_fingerprint": refreshed_source.fingerprint,
+                "old_normalized_fingerprint": source.normalized_fingerprint,
+                "new_normalized_fingerprint": refreshed_source.normalized_fingerprint,
+                "media_type": media_type,
+                "ranges_removed": len(old_ranges),
+                "ranges_extracted": len(new_ranges),
+                "impacted_artifacts": impacts,
+                "index_rebuilt": not effective_dry_run,
+                "semantic_index_stale": semantic_index_stale,
+                "next_commands": ["kc index build --semantic"] if semantic_index_stale else [],
+            },
+            target={"identifier": identifier, "source_id": source.source_id},
+        )
+
+    run("source.refresh", _run)
 
 
 @app.command("search", help="Search source ranges with BM25, semantic, or hybrid retrieval and return citation tokens.")

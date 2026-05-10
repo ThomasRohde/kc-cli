@@ -34,6 +34,7 @@ def test_guide_returns_machine_readable_contract() -> None:
     guide = payload["result"]
     assert guide["capabilities"]["calls_llm"] is False
     assert "source.add" in guide["commands"]
+    assert "source.refresh" in guide["commands"]
     assert "KC_LOCK_HELD" in guide["error_codes"]
 
 
@@ -79,6 +80,7 @@ def test_help_outputs_include_command_explanations() -> None:
     assert source.exit_code == 0
     assert "Register a local text/Markdown source" in source.output
     assert "Show source metadata" in source.output
+    assert "Refresh a registered local source" in source.output
     assert "Search source ranges with BM25" in source.output
 
     artifact = runner.invoke(app, ["artifact", "--help"])

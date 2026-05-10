@@ -265,7 +265,8 @@ def semantic_index_status(db_path: Path, ranges: list[SourceRangeRecord] | None 
             missing = 0
             stale = 0
             checksum = model_metadata.get("checksum") if model_metadata else None
-            dimension = int(model_metadata.get("dimension")) if model_metadata else None
+            dimension_value = model_metadata.get("dimension") if model_metadata else None
+            dimension = int(dimension_value) if dimension_value is not None else None
             for source_range in ranges:
                 row = rows.get(source_range.range_id)
                 if row is None:
@@ -275,6 +276,7 @@ def semantic_index_status(db_path: Path, ranges: list[SourceRangeRecord] | None 
                     row["source_fingerprint"] != source_range.source_fingerprint
                     or row["text_hash"] != source_range.text_hash
                     or row["model_checksum"] != checksum
+                    or dimension is None
                     or int(row["dimension"]) != dimension
                 ):
                     stale += 1
