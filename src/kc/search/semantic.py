@@ -53,7 +53,7 @@ def _model_unavailable(message: str, **details: Any) -> KcError:
         code="KC_RETRIEVAL_MODEL_UNAVAILABLE",
         message=message,
         details=details,
-        suggested_action="run kc index build --semantic after fixing the local model",
+        suggested_action="run kc index build after fixing the local model",
     )
 
 
@@ -295,12 +295,12 @@ def assert_semantic_index_ready(
     status = semantic_index_status(db_path, ranges)
     if not status["index_metadata"] or not status["metadata_match"]:
         raise _model_unavailable(
-            "Semantic index metadata is missing or stale. Run kc index build --semantic.",
+            "Semantic index metadata is missing or stale. Run kc index build.",
             status=status,
         )
     if status["missing_vectors"] or status["stale_vectors"]:
         raise _model_unavailable(
-            "Semantic index vectors are missing or stale. Run kc index build --semantic.",
+            "Semantic index vectors are missing or stale. Run kc index build.",
             missing_vectors=status["missing_vectors"],
             stale_vectors=status["stale_vectors"],
         )

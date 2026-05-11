@@ -60,3 +60,21 @@
 - Artifact: knowledge/wiki/kc-implementation.md
 - Fingerprint: sha256:ff4a37ca81b6b23989dbd2247eb109d9db49b2709e6b8a5b91eff6ba1276c49f
 
+## 2026-05-11 - kc Implementation Notes
+
+- Plan: plan_01KRAGY591VP6QJXKHRRW8JHKF
+- Artifact: knowledge/wiki/kc-implementation.md
+- Fingerprint: sha256:c2e7e66b935e7b3bd2f0f2a4cce642778a07c0c6144a9e54b649c92d0d673b9f
+
+## 2026-05-11 - kc Implementation Notes
+
+- Plan: plan_01KRAJK83AJMRX8891WE42HBGM
+- Artifact: knowledge/wiki/kc-implementation.md
+- Fingerprint: sha256:6c8910930aba4d5608b77250e89970a06d486a4b3ada98c38e31ea754723a4f3
+
+## 2026-05-11 - kc Implementation Notes
+
+- Plan: plan_01KRAJN2ZNMX65FG1EPPKM1RTY
+- Artifact: knowledge/wiki/kc-implementation.md
+- Fingerprint: sha256:6c8910930aba4d5608b77250e89970a06d486a4b3ada98c38e31ea754723a4f3
+

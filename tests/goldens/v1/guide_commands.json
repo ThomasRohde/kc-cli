@@ -148,11 +148,10 @@
         "command_id": "source.search",
         "mutates": false,
         "confirmation": "none",
-        "syntax": "kc source search QUERY [--domain DOMAIN] [--mode bm25|semantic|hybrid]",
+        "syntax": "kc source search QUERY [--domain DOMAIN]",
         "important_options": [
           "--domain",
-          "--limit",
-          "--mode"
+          "--limit"
         ],
         "result_summary": "Ranked source ranges with citation tokens and retrieval scores.",
         "examples": [
@@ -174,16 +173,14 @@
         "command_id": "index.build",
         "mutates": true,
         "confirmation": "cache rebuild; --dry-run previews",
-        "syntax": "kc index build [--semantic] [--dry-run]",
+        "syntax": "kc index build [--dry-run]",
         "important_options": [
-          "--semantic",
           "--clean",
           "--dry-run"
         ],
-        "result_summary": "SQLite/BM25 rebuild status and optional semantic index metadata.",
+        "result_summary": "SQLite/BM25 rebuild status and semantic index metadata.",
         "examples": [
-          "kc index build",
-          "kc index build --semantic"
+          "kc index build"
         ],
         "common_errors": [
           "KC_VALIDATION_INVALID_ARGUMENT",
@@ -201,15 +198,14 @@
         "command_id": "context.prepare",
         "mutates": false,
         "confirmation": "none",
-        "syntax": "kc context prepare --ask ASK --shape SHAPE [--mode bm25|semantic|hybrid]",
+        "syntax": "kc context prepare --ask ASK --shape SHAPE",
         "important_options": [
           "--ask",
           "--shape",
           "--domain",
           "--target",
           "--grounding",
-          "--budget",
-          "--mode"
+          "--budget"
         ],
         "result_summary": "Grounded source context, artifact matches, citation policy, and next commands.",
         "examples": [

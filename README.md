@@ -12,8 +12,8 @@ work: source registration, range extraction, search, context preparation,
 citation validation, safe artifact apply, task state, and exports.
 
 `kc` does not call an LLM, does not answer questions for you, and does not add a
-provider dependency to your project. Optional semantic retrieval uses the
-bundled `model2vec` `potion-base-8M` model for ranking only.
+provider dependency to your project. Built-in hybrid retrieval uses SQLite BM25
+and the bundled `model2vec` `potion-base-8M` model for ranking only.
 
 ## Contents
 
@@ -111,7 +111,7 @@ range records with ready-to-use citation tokens.
 
 ```bash
 kc source search "ownership responsibilities" --domain policy
-kc source search "retention period" --mode bm25 --limit 5
+kc source search "retention period" --limit 5
 ```
 
 ### Context
@@ -189,9 +189,9 @@ Use `kc guide` for a machine-readable command manifest.
 | `kc source add FILE --domain DOMAIN --dry-run\|--yes` | Yes | Dry-run unless `--yes` | Register a source, fingerprint it, extract ranges, and update indexes. |
 | `kc source inspect SOURCE_OR_PATH [--ranges]` | No | None | Show source metadata, fingerprint state, and optional ranges. |
 | `kc source refresh SOURCE_OR_PATH --dry-run\|--yes` | Yes | Dry-run unless `--yes` | Refresh a registered source and replace extracted ranges. |
-| `kc source search QUERY [--domain DOMAIN] [--limit N] [--mode bm25\|semantic\|hybrid]` | No | None | Search source ranges and return citation tokens. |
-| `kc index build [--semantic] [--clean] [--dry-run]` | Yes | Cache rebuild; `--dry-run` previews | Rebuild BM25 indexes and optionally semantic embeddings. |
-| `kc context prepare --ask ASK --shape SHAPE [--domain DOMAIN] [--target PATH] [--grounding required\|optional] [--budget max_sources=N,max_ranges=N] [--mode bm25\|semantic\|hybrid]` | No | None | Emit evidence, policies, artifact matches, and next commands. |
+| `kc source search QUERY [--domain DOMAIN] [--limit N]` | No | None | Search source ranges with hybrid retrieval and return citation tokens. |
+| `kc index build [--clean] [--dry-run]` | Yes | Cache rebuild; `--dry-run` previews | Rebuild BM25 and semantic indexes. |
+| `kc context prepare --ask ASK --shape SHAPE [--domain DOMAIN] [--target PATH] [--grounding required\|optional] [--budget max_sources=N,max_ranges=N]` | No | None | Emit evidence, policies, artifact matches, and next commands. |
 | `kc artifact new --type TYPE --path PATH --title TITLE --dry-run\|--yes` | Yes | Dry-run unless `--yes` | Create a deterministic artifact skeleton. |
 | `kc artifact validate --file PATH [--schema SCHEMA] [--allow-uncited]` | No | None | Validate artifact schema, sections, citations, and provenance. |
 | `kc artifact diff --file PATH [--against BASELINE]` | No | None | Build a structured apply plan and show artifact changes. |
@@ -387,8 +387,13 @@ state_dir = ".kc"
 
 [index]
 fts_enabled = true
-semantic_enabled = false
-hybrid_enabled = false
+rrf_k = 60
+
+[index.semantic]
+provider = "model2vec"
+model = "potion-base-8M"
+dimension = 256
+purpose = "ranking_only"
 
 [mutation]
 default_dry_run = true
@@ -400,8 +405,9 @@ create_snapshots = true
 Use command-line `--data-dir` and `--state-dir` when a workspace uses
 non-default paths.
 
-BM25 search uses SQLite FTS5 scoring. Lower scores rank better, and scores can
-be negative on small or term-heavy corpora.
+Hybrid search combines SQLite FTS5/BM25 and semantic vector rankings with
+reciprocal rank fusion. BM25 scores can be negative on small or term-heavy
+corpora; semantic scores are cosine similarities from the bundled local model.
 
 ## Safety model
 
@@ -434,13 +440,6 @@ If search, context preparation, or lint reports index problems:
 ```bash
 kc index build
 kc lint
-```
-
-For semantic search:
-
-```bash
-kc index build --semantic
-kc source search "ownership lifecycle" --mode semantic
 ```
 
 ### Lock held
@@ -507,6 +506,24 @@ $env:PYTHONPATH='src'; python -m kc lint
 
 The PyPI package name is `kc-cli`; the installed command remains `kc`.
 
+Versioning follows the same single-source pattern as the package build:
+
+- The release version lives in `src/kc/__init__.py` as `__version__`.
+- `pyproject.toml` uses Hatch dynamic versioning from that file.
+- `kc --version` and `kc guide` must report the same version.
+- `CHANGELOG.md` keeps an `[Unreleased]` section and a section for the current
+  version.
+
+Use Semantic Versioning:
+
+- Patch: bug fixes and documentation changes that preserve the CLI contract.
+- Minor: backward-compatible commands, fields, options, schemas, or behavior.
+- Major: breaking changes to command semantics, required envelope fields,
+  stable error codes, JSONL schemas, or stored artifact contracts.
+
+Before publishing, update `CHANGELOG.md`, bump `src/kc/__init__.py`, and tag the
+release as `vX.Y.Z`.
+
 Build and check distributions:
 
 ```bash
@@ -527,6 +544,8 @@ Before publishing, verify:
 pytest
 ruff check .
 pyright
+kc --version
+kc guide --section compatibility
 kc conformance
 kc lint
 ```

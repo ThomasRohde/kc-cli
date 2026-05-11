@@ -1,4 +1,4 @@
-"""Range retrieval over SQLite FTS5 plus optional semantic vectors."""
+"""Range retrieval over SQLite FTS5 plus semantic vectors."""
 
 from __future__ import annotations
 
@@ -14,7 +14,12 @@ from kc.errors import KcError
 from kc.models.source import SourceRecord
 from kc.models.source_range import SourceRangeRecord
 from kc.paths import ensure_data_dir_exists
-from kc.search.semantic import assert_semantic_index_ready, semantic_rankings
+from kc.search.semantic import (
+    assert_semantic_index_ready,
+    build_semantic_index,
+    semantic_index_status,
+    semantic_rankings,
+)
 from kc.store.jsonl import read_jsonl
 from kc.store.sqlite import index_status, init_db, rebuild_index
 
@@ -41,9 +46,16 @@ def ensure_index(db_path: Path, sources_path: Path, ranges_path: Path) -> None:
     sources = read_jsonl(sources_path, SourceRecord)
     ranges = read_jsonl(ranges_path, SourceRangeRecord)
     status = index_status(db_path, sources, ranges)
-    if status["sqlite_exists"] and not status["stale"]:
-        return
-    rebuild_index(db_path, sources, ranges)
+    if not status["sqlite_exists"] or status["stale"]:
+        rebuild_index(db_path, sources, ranges)
+    semantic_status = semantic_index_status(db_path, ranges)
+    if (
+        not semantic_status["index_metadata"]
+        or not semantic_status["metadata_match"]
+        or semantic_status["missing_vectors"]
+        or semantic_status["stale_vectors"]
+    ):
+        build_semantic_index(db_path, ranges)
 
 
 def _build_fts_query(query: str) -> str:
@@ -167,24 +179,6 @@ def _format_result(
     }
 
 
-def _combine_bm25_only(rankings: list[Bm25Rank]) -> list[CombinedRank]:
-    return [
-        CombinedRank(range_id=item.range_id, bm25_rank=item.rank, bm25_score=item.score)
-        for item in rankings
-    ]
-
-
-def _combine_semantic_only(rankings: list[Any]) -> list[CombinedRank]:
-    return [
-        CombinedRank(
-            range_id=item.range_id,
-            semantic_rank=item.rank,
-            semantic_score=item.score,
-        )
-        for item in rankings
-    ]
-
-
 def _combine_hybrid(
     bm25: list[Bm25Rank],
     semantic: list[Any],
@@ -240,31 +234,18 @@ def search_ranges(
     *,
     domain: str | None = None,
     limit: int = 10,
-    mode: str = "bm25",
     rrf_k: int = 60,
     ranges: list[SourceRangeRecord] | None = None,
 ) -> list[dict[str, Any]]:
-    if mode not in {"bm25", "semantic", "hybrid"}:
-        raise KcError(
-            code="KC_RETRIEVAL_MODEL_UNAVAILABLE",
-            message=f"Unsupported retrieval mode: {mode}",
-            details={"mode": mode, "supported": ["bm25", "semantic", "hybrid"]},
-        )
     init_db(db_path)
     conn = _connect(db_path)
     try:
         candidate_limit = max(limit * 5, 100)
-        if mode == "bm25":
-            combined = _combine_bm25_only(_bm25_rankings(conn, query, domain=domain, limit=limit))
-        else:
-            source_ranges = ranges if ranges is not None else []
-            model = assert_semantic_index_ready(db_path, source_ranges)
-            semantic = semantic_rankings(conn, query, model, domain=domain, limit=candidate_limit)
-            if mode == "semantic":
-                combined = _combine_semantic_only(semantic[:limit])
-            else:
-                bm25 = _bm25_rankings(conn, query, domain=domain, limit=candidate_limit)
-                combined = _combine_hybrid(bm25, semantic, rrf_k=rrf_k, limit=limit)
+        source_ranges = ranges if ranges is not None else []
+        model = assert_semantic_index_ready(db_path, source_ranges)
+        semantic = semantic_rankings(conn, query, model, domain=domain, limit=candidate_limit)
+        bm25 = _bm25_rankings(conn, query, domain=domain, limit=candidate_limit)
+        combined = _combine_hybrid(bm25, semantic, rrf_k=rrf_k, limit=limit)
         rows = _rows_for_ranges(conn, [item.range_id for item in combined])
         results = []
         for hybrid_rank, item in enumerate(combined, start=1):

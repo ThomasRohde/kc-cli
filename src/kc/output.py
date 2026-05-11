@@ -424,7 +424,7 @@ def _source_refresh_summary(payload: dict[str, Any]) -> Summary:
             ("ranges_removed", result.get("ranges_removed")),
             ("ranges_extracted", result.get("ranges_extracted")),
             ("impacted_artifacts", _count(result.get("impacted_artifacts"))),
-            ("semantic_index_stale", result.get("semantic_index_stale")),
+            ("semantic_index_rebuilt", result.get("semantic_index_rebuilt")),
         ],
     )
 

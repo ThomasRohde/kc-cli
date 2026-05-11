@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
+import tomllib
 from pathlib import Path
 
 from typer.testing import CliRunner
 
+from kc import __version__
 from kc.cli import app
 from kc.commands.guide import build_guide
 from kc.output import HUMAN_RENDERERS
@@ -34,10 +37,29 @@ def test_guide_returns_machine_readable_contract() -> None:
     payload = parse(result.output)
     assert_envelope(payload, ok=True, command="guide")
     guide = payload["result"]
+    assert guide["version"] == __version__
     assert guide["capabilities"]["calls_llm"] is False
     assert "source.add" in guide["commands"]
     assert "source.refresh" in guide["commands"]
     assert "KC_LOCK_HELD" in guide["error_codes"]
+
+
+def test_version_surfaces_share_single_source() -> None:
+    assert re.fullmatch(r"\d+\.\d+\.\d+(?:[a-zA-Z0-9.+-]+)?", __version__)
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output == f"kc {__version__}\n"
+    assert build_guide()["version"] == __version__
+
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    assert pyproject["project"]["dynamic"] == ["version"]
+    assert pyproject["tool"]["hatch"]["version"]["path"] == "src/kc/__init__.py"
+
+
+def test_changelog_tracks_current_version() -> None:
+    changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+    assert "## [Unreleased]" in changelog
+    assert f"## [{__version__}]" in changelog
 
 
 def test_init_dry_run_creates_nothing(tmp_path: Path, monkeypatch) -> None:
@@ -231,7 +253,7 @@ def test_help_outputs_include_command_explanations() -> None:
     assert "Register a local text/Markdown source" in source.output
     assert "Show source metadata" in source.output
     assert "Refresh a registered local source" in source.output
-    assert "Search source ranges with BM25" in source.output
+    assert "Search source ranges with hybrid retrieval" in source.output
 
     artifact = runner.invoke(app, ["artifact", "--help"])
     assert artifact.exit_code == 0

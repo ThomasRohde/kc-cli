@@ -56,10 +56,6 @@ def test_source_search_rejects_non_positive_limit(tmp_path: Path, monkeypatch) -
     assert negative.exit_code == 10
     assert parse(negative.output)["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
 
-    mode = runner.invoke(app, ["source", "search", "owners", "--mode", "xyz"])
-    assert mode.exit_code == 10
-    assert parse(mode.output)["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
-
 
 def test_source_add_empty_file_warns_no_ranges(tmp_path: Path, monkeypatch) -> None:
     init_repo(tmp_path, monkeypatch)

@@ -37,6 +37,17 @@ $env:PYTHONPATH='src'; python -m kc lint
 
 Use `pytest tests/<file>.py -q` for focused checks while iterating, then broaden as risk increases.
 
+## Versioning and Releases
+
+Follow the `archguard`-style single-source version regime:
+
+- Keep the package version in `src/kc/__init__.py` as `__version__`.
+- Keep `pyproject.toml` configured for Hatch dynamic versioning from that file.
+- Keep `kc --version`, `kc guide`, and the package version in sync.
+- Keep `CHANGELOG.md` with an `[Unreleased]` section and a section for the current version.
+- Use Semantic Versioning: patch for compatible fixes, minor for backward-compatible additions, and major for breaking command, envelope, error-code, JSONL schema, or artifact-contract changes.
+- Before publishing, update `CHANGELOG.md`, bump `__version__`, run the documented checks, and tag the release as `vX.Y.Z`.
+
 ## Knowledge Maintenance With kc
 
 This repository is also a `kc` knowledge workspace. `kc.toml` points at `knowledge/` for durable artifacts and `.kc/` for local state.

@@ -20,7 +20,6 @@ from kc.search.fts import ensure_index, search_ranges
 
 app = typer.Typer(help="Prepare grounded source context for an external agent.")
 ALLOWED_GROUNDING = {"required", "optional"}
-ALLOWED_RETRIEVAL_MODES = {"bm25", "semantic", "hybrid"}
 
 
 def _parse_budget(raw: str | None) -> dict[str, int]:
@@ -41,14 +40,10 @@ def prepare(
     budget: Annotated[
         str | None, typer.Option("--budget", help="max_sources=N,max_ranges=N")
     ] = None,
-    mode: Annotated[
-        str, typer.Option("--mode", help="Retrieval mode: bm25, semantic, or hybrid.")
-    ] = "bm25",
 ) -> None:
     def _run() -> None:
         paths = current_paths()
         validate_choice(grounding, option="--grounding", supported=ALLOWED_GROUNDING)
-        validate_choice(mode, option="--mode", supported=ALLOWED_RETRIEVAL_MODES)
         limits = _parse_budget(budget)
         ensure_index(paths.sqlite_path, paths.sources_jsonl, paths.ranges_jsonl)
         sources = load_sources()
@@ -57,7 +52,6 @@ def prepare(
             ask,
             domain=domain,
             limit=limits["max_ranges"],
-            mode=mode,
             rrf_k=load_config().rrf_k,
             ranges=load_ranges(),
         )
@@ -95,7 +89,7 @@ def prepare(
             "context.prepare",
             {
                 "search_query": ask,
-                "mode": mode,
+                "mode": "hybrid",
                 "budget": limits,
                 "candidate_ranges": filtered,
                 "existing_artifacts": existing,
@@ -127,7 +121,7 @@ def prepare(
                     f"kc artifact apply --file {target or '<artifact>'} --yes",
                 ],
             },
-            target={"ask": ask, "shape": shape, "target": target, "mode": mode, "budget": limits},
+            target={"ask": ask, "shape": shape, "target": target, "mode": "hybrid", "budget": limits},
             warnings=[*warnings, *stale_source_warnings(filtered, sources)],
         )
 

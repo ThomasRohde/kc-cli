@@ -16,7 +16,6 @@ from kc.commands.common import (
     save_ranges,
     save_sources,
     stale_source_warnings,
-    validate_choice,
     validate_positive_int,
 )
 from kc.config import load_config
@@ -29,11 +28,10 @@ from kc.output import emit_success, warning
 from kc.paths import current_paths, ensure_under_root, repo_relative
 from kc.provenance.citations import find_range_for_token, parse_markdown_citations
 from kc.search.extract import extract_ranges, guess_media_type, is_text_like
-from kc.search.semantic import build_semantic_index, semantic_index_status
+from kc.search.semantic import build_semantic_index
 from kc.store.sqlite import rebuild_index
 
 app = typer.Typer(help="Register, inspect, index, and search local source material.")
-ALLOWED_RETRIEVAL_MODES = {"bm25", "semantic", "hybrid"}
 
 
 def _resolve_source(identifier: str) -> tuple[SourceRecord, Path]:
@@ -165,8 +163,7 @@ def add(
             save_ranges([*load_ranges(), *ranges])
             all_ranges = load_ranges()
             rebuild_index(paths.sqlite_path, load_sources(), all_ranges)
-            if load_config().semantic_enabled:
-                build_semantic_index(paths.sqlite_path, all_ranges)
+            build_semantic_index(paths.sqlite_path, all_ranges)
         warnings = [
             warning(
                 "KC_AUTHORITY_UNKNOWN",
@@ -243,7 +240,7 @@ def inspect(
     run("source.inspect", _run)
 
 
-@app.command("refresh", help="Refresh a registered local source, replace its ranges, and rebuild BM25 indexes.")
+@app.command("refresh", help="Refresh a registered local source, replace its ranges, and rebuild search indexes.")
 def refresh(
     identifier: Annotated[str, typer.Argument(help="Source ID or source path.")],
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without writing.")] = False,
@@ -287,11 +284,6 @@ def refresh(
         new_ranges = extract_ranges(source_path, source.source_id, refreshed_source.fingerprint)
         impacts = _impacted_artifacts(source.source_id, new_ranges)
         effective_dry_run = dry_run or not yes
-        semantic_before = semantic_index_status(paths.sqlite_path, load_ranges())
-        semantic_index_stale = bool(
-            semantic_before.get("index_metadata") or semantic_before.get("vector_count")
-        )
-
         if not effective_dry_run:
             sources = [
                 refreshed_source if item.source_id == source.source_id else item
@@ -303,6 +295,7 @@ def refresh(
             save_sources(sources)
             save_ranges(ranges)
             rebuild_index(paths.sqlite_path, sources, ranges, load_artifacts(), load_citation_edges())
+            build_semantic_index(paths.sqlite_path, ranges)
 
         emit_success(
             "source.refresh",
@@ -319,8 +312,8 @@ def refresh(
                 "ranges_extracted": len(new_ranges),
                 "impacted_artifacts": impacts,
                 "index_rebuilt": not effective_dry_run,
-                "semantic_index_stale": semantic_index_stale,
-                "next_commands": ["kc index build --semantic"] if semantic_index_stale else [],
+                "semantic_index_rebuilt": not effective_dry_run,
+                "next_commands": [],
             },
             target={"identifier": identifier, "source_id": source.source_id},
         )
@@ -328,15 +321,13 @@ def refresh(
     run("source.refresh", _run)
 
 
-@app.command("search", help="Search source ranges with BM25, semantic, or hybrid retrieval and return citation tokens.")
+@app.command("search", help="Search source ranges with hybrid retrieval and return citation tokens.")
 def search(
     query: Annotated[str, typer.Argument(help="Search query.")],
     domain: Annotated[str | None, typer.Option("--domain", help="Domain filter.")] = None,
     limit: Annotated[int, typer.Option("--limit", help="Maximum results; must be positive.")] = 10,
-    mode: Annotated[str, typer.Option("--mode", help="Retrieval mode: bm25, semantic, or hybrid.")] = "bm25",
 ) -> None:
     def _run() -> None:
-        validate_choice(mode, option="--mode", supported=ALLOWED_RETRIEVAL_MODES)
         validate_positive_int(limit, option="--limit")
         paths = current_paths()
         from kc.search.fts import ensure_index, search_ranges
@@ -349,14 +340,13 @@ def search(
             query,
             domain=domain,
             limit=limit,
-            mode=mode,
             rrf_k=config.rrf_k,
             ranges=load_ranges(),
         )
         emit_success(
             "source.search",
-            {"query": query, "mode": mode, "total": len(results), "results": results},
-            target={"query": query, "domain": domain, "limit": limit, "mode": mode},
+            {"query": query, "mode": "hybrid", "total": len(results), "results": results},
+            target={"query": query, "domain": domain, "limit": limit, "mode": "hybrid"},
             warnings=stale_source_warnings(results, sources),
         )
 

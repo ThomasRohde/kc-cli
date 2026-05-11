@@ -31,8 +31,6 @@ fail_on_stale_source_fingerprint = true
 
 [index]
 fts_enabled = true
-semantic_enabled = false
-hybrid_enabled = false
 rrf_k = 60
 
 [index.semantic]
@@ -88,14 +86,6 @@ class KcConfig:
     @property
     def waiting_exit_code(self) -> int:
         return int((self.raw or {}).get("task", {}).get("waiting_exit_code", 40))
-
-    @property
-    def semantic_enabled(self) -> bool:
-        return bool((self.raw or {}).get("index", {}).get("semantic_enabled", False))
-
-    @property
-    def hybrid_enabled(self) -> bool:
-        return bool((self.raw or {}).get("index", {}).get("hybrid_enabled", False))
 
     @property
     def rrf_k(self) -> int:

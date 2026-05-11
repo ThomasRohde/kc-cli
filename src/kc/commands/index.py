@@ -13,9 +13,8 @@ from kc.store.sqlite import index_status, rebuild_index
 app = typer.Typer(help="Build or rebuild derived SQLite search indexes.")
 
 
-@app.command("build", help="Rebuild BM25 indexes and optionally build semantic embeddings.")
+@app.command("build", help="Rebuild BM25 and semantic search indexes.")
 def build(
-    semantic: Annotated[bool, typer.Option("--semantic", help="Build semantic index.")] = False,
     clean: Annotated[bool, typer.Option("--clean", help="Force a clean rebuild.")] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without writing.")] = False,
 ) -> None:
@@ -24,14 +23,11 @@ def build(
         ranges = load_ranges()
         paths = current_paths()
         if dry_run:
-            semantic_model = None
-            if semantic:
-                semantic_model = semantic_model_metadata(load_semantic_model())
+            semantic_model = semantic_model_metadata(load_semantic_model())
             result = {
                 "dry_run": True,
                 "clean": clean,
-                "semantic": semantic,
-                "semantic_model": semantic_model,
+                "semantic": {"enabled": True, "model": semantic_model, "embeddings": len(ranges)},
                 "sources": len(sources),
                 "ranges": len(ranges),
                 "db_path": str(paths.sqlite_path),
@@ -45,10 +41,7 @@ def build(
                 load_artifacts(),
                 load_citation_edges(),
             )
-            if semantic:
-                result["semantic"] = build_semantic_index(paths.sqlite_path, ranges)
-            else:
-                result["semantic"] = {"enabled": False}
+            result["semantic"] = build_semantic_index(paths.sqlite_path, ranges)
             result["dry_run"] = False
             result["clean"] = clean
             result["db_path"] = str(paths.sqlite_path)
