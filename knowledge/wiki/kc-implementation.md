@@ -10,56 +10,68 @@ requires_citations: true
 source_refs:
   - source_id: src_01KR89M77M0SR209C87M6RKAY2
     ranges: []
+  - source_id: src_01KR8GDB389BYFVFP2E09YMTD9
+    ranges: []
   - source_id: src_01KR8GD8FTQ0BZXKM91NPZ4BC9
     ranges: []
   - source_id: src_01KR8GD8XVCEYBW80M2SKVZVKS
     ranges: []
-  - source_id: src_01KR8GD9CVD7PNQVA1KT2E73K6
-    ranges: []
-  - source_id: src_01KR8GD9T9JFNPC5R9WMBHWXCH
-    ranges: []
   - source_id: src_01KR8GDA7V19F05T6R93ZAWZ35
-    ranges: []
-  - source_id: src_01KR8GDBGSD5NX7GS8X8CC8YQW
     ranges: []
   - source_id: src_01KR8Q43CZJXAM4ACWW4Y7GWT1
     ranges: []
   - source_id: src_01KR8Q47XCTWN53DZJ3BE8PD88
     ranges: []
-last_validated_at: null
+  - source_id: src_01KR8W45SSBZB8AA4FNSHZZFCQ
+    ranges: []
+  - source_id: src_01KR8W4S76SRDQKJDQ700PDTGG
+    ranges: []
+  - source_id: src_01KR8W7A30Q9G8RF9CYP7P7TCF
+    ranges: []
+  - source_id: src_01KR90ZGMHFEFNST5FRX05AER0
+    ranges: []
+  - source_id: src_01KR93G4RJRP13TTXQX28SKF85
+    ranges: []
+  - source_id: src_01KR93G5MN8R7Q1PCGH7RB4Y00
+    ranges: []
+  - source_id: src_01KR93G6FG1161NN4Z6Z2NVXBW
+    ranges: []
+  - source_id: src_01KR93G7B0GP8C5J7WTECXA6NN
+    ranges: []
+  - source_id: src_01KR93G91G16H3XQ8MHQ13NXJM
+    ranges: []
+  - source_id: src_01KR93G9W8C0NF3PE57GAV813F
+    ranges: []
+  - source_id: src_01KR93GAQK523QMTD7E1FH7RPF
+    ranges: []
 ---
+
 # kc Implementation Notes
 
 ## Summary
 
-The repository now contains the v1 deterministic knowledge harness plus the phase 2 semantic retrieval slice and phase 3 release-hardening work: BM25 remains the default search mode, semantic or hybrid modes are available after building the semantic index, registered sources can be refreshed deterministically, and artifact apply can enforce persisted plans. [kc:src_01KR89M77M0SR209C87M6RKAY2:L881-L881] [kc:src_01KR8GD8XVCEYBW80M2SKVZVKS:L231-L254] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L232-L253] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L390-L413]
+`kc-cli` is now closer to the v1 harness goal: citation parsing, source extraction, artifact validation, direct-edit apply, lint, index health, guide output, context preparation, export, and conformance coverage have all been hardened while preserving the local-first, retrieval-only CLI shape. The v1 design names line ranges, JSON pointers, and CSV row ranges as locator kinds, and it keeps semantic retrieval metadata local and ranking-only rather than generative. [kc:src_01KR89M77M0SR209C87M6RKAY2:L402-L405] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2210-L2213]
 
-## Source-backed facts
+## Source-Backed Facts
 
-- The initialized repository layout follows the design shape with `kc.toml`, `knowledge/` JSONL and wiki files, and `.kc/` state directories for indexes, locks, snapshots, plans, and tasks. [kc:src_01KR89M77M0SR209C87M6RKAY2:L212-L235]
-- The first implementation milestone called for a Python package, Typer CLI, envelope output, error handling, minimal `guide` and `init`, and tests for envelope/init behavior. [kc:src_01KR89M77M0SR209C87M6RKAY2:L2234-L2240]
-- The guide command catalog now exposes `source.refresh` as a mutating command and documents `artifact.apply` as accepting either `--file` or `--plan` plus an optional idempotency key. [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L143-L166] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L167-L188]
-- The phase 2 design requirement permits an optional local semantic index, but requires explicit configuration, no network calls during indexing, stored model metadata, embedding dimension and checksum, rebuild behavior on metadata changes, and clear unavailable-model errors. [kc:src_01KR89M77M0SR209C87M6RKAY2:L1494-L1499]
-- The package metadata now includes `model2vec` and `numpy` as core dependencies, and the wheel build explicitly includes `src/kc/embedding_models`. [kc:src_01KR8GDBGSD5NX7GS8X8CC8YQW:L29-L34] [kc:src_01KR8GDBGSD5NX7GS8X8CC8YQW:L52-L53]
-- The semantic implementation declares the bundled `potion-base-8M` model, expected dimension, checksum, and `ranking_only` metadata payload. [kc:src_01KR8GD8FTQ0BZXKM91NPZ4BC9:L21-L25] [kc:src_01KR8GD8FTQ0BZXKM91NPZ4BC9:L60-L68]
-- The semantic model loader resolves the bundled model directory, validates the checksum, imports Model2Vec, loads the local model path, and rejects dimension mismatches. [kc:src_01KR8GD8FTQ0BZXKM91NPZ4BC9:L35-L36] [kc:src_01KR8GD8FTQ0BZXKM91NPZ4BC9:L71-L94]
-- `kc index build --semantic` rebuilds the SQLite cache and then calls the semantic index builder; the semantic builder embeds source-range excerpts, stores vector rows, and records semantic model metadata. [kc:src_01KR8GD9CVD7PNQVA1KT2E73K6:L40-L54] [kc:src_01KR8GD8FTQ0BZXKM91NPZ4BC9:L173-L190] [kc:src_01KR8GD8FTQ0BZXKM91NPZ4BC9:L192-L215] [kc:src_01KR8GD8FTQ0BZXKM91NPZ4BC9:L216-L226]
-- `kc source search` accepts `bm25`, `semantic`, and `hybrid` modes, and search results expose BM25 rank, semantic rank, semantic score, hybrid rank, RRF score, citation token, and source metadata. [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L317-L332] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L334-L349] [kc:src_01KR8GD8XVCEYBW80M2SKVZVKS:L134-L157]
-- Hybrid retrieval combines BM25 and semantic candidate lists with reciprocal rank fusion, matching the deterministic fusion formula in the design. [kc:src_01KR89M77M0SR209C87M6RKAY2:L1507-L1509] [kc:src_01KR8GD8XVCEYBW80M2SKVZVKS:L182-L204] [kc:src_01KR8GD8XVCEYBW80M2SKVZVKS:L206-L228]
-- `kc context prepare` now passes the requested retrieval mode, RRF constant, and current source ranges into shared search while still emitting grounded context rather than answering the task. [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L29-L52] [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L53-L76] [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L77-L100]
-- `kc source refresh` resolves an existing source by ID or path, rejects missing or unsupported local files, preserves the existing `source_id`, recomputes raw and normalized fingerprints, replaces that source's extracted ranges, reports impacted artifact citations, and rebuilds the BM25 index on apply. [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L35-L46] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L48-L55] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L58-L81] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L82-L86] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L232-L253] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L255-L278] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L281-L291]
-- `kc source refresh` returns old and new fingerprints, range counts, impacted artifacts, index rebuild status, semantic index staleness, and a `kc index build --semantic` next command when semantic vectors need an explicit rebuild. [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L293-L312]
-- `kc artifact apply --plan` loads only `kc.plan.v1` records, rejects non-`artifact.apply` or multi-operation plans, enforces path and fingerprint preconditions before writing registry state, and persists the applied plan under `.kc/plans/<plan_id>.json`. [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L390-L413] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L416-L430] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L458-L481] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L485-L488] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L563-L586] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L624-L647]
+- Citation records and Markdown validation now share the same locator model for line ranges, JSON pointers, and CSV row ranges. [kc:src_01KR93G7B0GP8C5J7WTECXA6NN:L38-L47] [kc:src_01KR93G6FG1161NN4Z6Z2NVXBW:L18-L25] [kc:src_01KR93G6FG1161NN4Z6Z2NVXBW:L90-L104]
+- Citation validation detects malformed kc tokens, missing ranges, stale registered fingerprints, and changed current source fingerprints. [kc:src_01KR93G6FG1161NN4Z6Z2NVXBW:L68-L83] [kc:src_01KR93G6FG1161NN4Z6Z2NVXBW:L165-L188] [kc:src_01KR93G6FG1161NN4Z6Z2NVXBW:L189-L212]
+- Search token rendering emits Markdown citation tokens for line ranges, JSON pointers, and CSV row ranges, and human output renders JSON pointer and CSV row locators. [kc:src_01KR8GD8XVCEYBW80M2SKVZVKS:L52-L60] [kc:src_01KR8W45SSBZB8AA4FNSHZZFCQ:L151-L161]
+- Source extraction now treats JSON, YAML, TOML, and CSV as structured inputs where parsing succeeds, falling back to text extraction on parser failures; CSV rows receive `csv_row_range` locators. [kc:src_01KR93G4RJRP13TTXQX28SKF85:L48-L71] [kc:src_01KR93G4RJRP13TTXQX28SKF85:L72-L84] [kc:src_01KR93G4RJRP13TTXQX28SKF85:L215-L238]
+- Artifact validation enforces known artifact types and statuses, required Markdown frontmatter, valid status transitions, source references, required sections, citation coverage, and JSON artifact citation checks. [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L48-L71] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L239-L262] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L457-L480] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L481-L504]
+- Artifact apply remains a direct-edit registry commit, but dry-run plans are enriched, idempotency conflicts are rejected, locks are used, fingerprints are rechecked under lock, and snapshots include the artifact plus kc-owned state files. [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L347-L370] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L974-L997] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L902-L925] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L1056-L1078]
+- Lint now has checks for duplicate IDs, orphan citation edges, missing source ranges, stale indexes, and log references, with index stale issues reported as `KC_INDEX_BUILD_FAILED`. [kc:src_01KR8W7A30Q9G8RF9CYP7P7TCF:L20-L41] [kc:src_01KR8W7A30Q9G8RF9CYP7P7TCF:L73-L96] [kc:src_01KR8W7A30Q9G8RF9CYP7P7TCF:L132-L141]
+- SQLite indexing stores source count, range count, and a corpus fingerprint; `index_status` compares current source/range state against the last build metadata so doctor, lint, and search can detect stale indexes. [kc:src_01KR93G5MN8R7Q1PCGH7RB4Y00:L178-L191] [kc:src_01KR93G5MN8R7Q1PCGH7RB4Y00:L290-L309] [kc:src_01KR8W45SSBZB8AA4FNSHZZFCQ:L657-L680]
+- Semantic retrieval remains bundled but retrieval-only: config and guide expose `model2vec`, `potion-base-8M`, checksum, explicit activation, and `ranking_only` purpose. [kc:src_01KR8GDB389BYFVFP2E09YMTD9:L38-L43] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L37-L60] [kc:src_01KR8GD8FTQ0BZXKM91NPZ4BC9:L60-L68]
+- `context prepare` validates grounding, mode, and retrieval budgets while retaining the v1 role of preparing evidence and instructions rather than answering the task itself. [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L44-L67] [kc:src_01KR89M77M0SR209C87M6RKAY2:L905-L905] [kc:src_01KR89M77M0SR209C87M6RKAY2:L925-L932]
+- `export --out` is path-safe and guide contracts now describe eval/export error behavior and mutation semantics through the standard envelope. [kc:src_01KR93G91G16H3XQ8MHQ13NXJM:L15-L38] [kc:src_01KR93G91G16H3XQ8MHQ13NXJM:L39-L48] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L419-L442]
+- Coverage was broadened for structured source search, malformed and stale citation validation, lock-held apply behavior, changed-fingerprint apply preconditions, path safety, doctor output, guide goldens, and conformance output. [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L49-L59] [kc:src_01KR93G9W8C0NF3PE57GAV813F:L192-L207] [kc:src_01KR93G9W8C0NF3PE57GAV813F:L303-L310] [kc:src_01KR93G9W8C0NF3PE57GAV813F:L317-L327] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L243-L257] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L259-L261] [kc:src_01KR90ZGMHFEFNST5FRX05AER0:L128-L129] [kc:src_01KR90ZGMHFEFNST5FRX05AER0:L136-L137]
 
 ## Inferences
 
-- The project is now ready to maintain its own registered implementation sources through `kc source refresh` rather than direct JSONL edits, while keeping semantic embedding rebuilds explicit. [kc:inference] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L281-L291] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L293-L312]
+- This pass is intentionally v1-close rather than post-v1: it hardens the core harness and avoids adding SaaS ingestion, MCP, web UI, workflow-engine behavior, or generative LLM dependencies. [kc:inference] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2210-L2213] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2462-L2468]
+- The direct-edit artifact flow is preserved, but the registry commit is now safer because apply recomputes evidence after validation and records enough plan/snapshot detail for deterministic review. [kc:inference] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L974-L997] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L1056-L1078]
 
-## Open questions
+## Open Questions
 
-- [kc:todo] Decide whether previously tracked generated state and Python cache files should be removed from the Git index now that `.gitignore` excludes future `.kc/`, cache, and build artifacts.
-
-## Source notes
-
-- `src_01KR89M77M0SR209C87M6RKAY2` is `kc-design-v1.md`, registered from this repo. [kc:src_01KR89M77M0SR209C87M6RKAY2:L5-L8]
-- `src_01KR8GD8FTQ0BZXKM91NPZ4BC9`, `src_01KR8GD8XVCEYBW80M2SKVZVKS`, `src_01KR8GD9CVD7PNQVA1KT2E73K6`, `src_01KR8GD9T9JFNPC5R9WMBHWXCH`, `src_01KR8GDA7V19F05T6R93ZAWZ35`, `src_01KR8GDBGSD5NX7GS8X8CC8YQW`, `src_01KR8Q43CZJXAM4ACWW4Y7GWT1`, and `src_01KR8Q47XCTWN53DZJ3BE8PD88` are implementation sources registered from this repo during phase 2 and phase 3 self-use. [kc:inference]
+- [kc:todo] Decide separately whether historical log entries that reference untracked local plan files should be normalized, ignored as local history, or moved behind an explicit `lint --checks log` cleanup task.

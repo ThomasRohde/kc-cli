@@ -1,0 +1,15 @@
+conformance
+profile  v1
+valid    true
+total    6
+passed   6
+failed   0
+
+check                    passed  message
+-----------------------  ------  ----------------------------------------------------------------------
+guide.required_sections  true    Guide exposes all required V1 sections.
+guide.command_fields     true    Every guide command has the required manifest fields.
+guide.public_commands    true    Guide command IDs match the public command set.
+renderers.coverage       true    Human renderer coverage matches guide commands.
+errors.contract          true    Guide errors and common errors resolve to the stable KcError contract.
+envelope.shape           true    JSON envelope exposes the locked V1 fields.

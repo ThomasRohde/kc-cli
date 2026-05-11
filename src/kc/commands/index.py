@@ -8,7 +8,7 @@ from kc.commands.common import load_artifacts, load_citation_edges, load_ranges,
 from kc.output import emit_success
 from kc.paths import current_paths
 from kc.search.semantic import build_semantic_index, load_semantic_model, semantic_model_metadata
-from kc.store.sqlite import rebuild_index
+from kc.store.sqlite import index_status, rebuild_index
 
 app = typer.Typer(help="Build or rebuild derived SQLite search indexes.")
 
@@ -35,6 +35,7 @@ def build(
                 "sources": len(sources),
                 "ranges": len(ranges),
                 "db_path": str(paths.sqlite_path),
+                "index": index_status(paths.sqlite_path, sources, ranges),
             }
         else:
             result = rebuild_index(
@@ -51,6 +52,7 @@ def build(
             result["dry_run"] = False
             result["clean"] = clean
             result["db_path"] = str(paths.sqlite_path)
+            result["index"] = index_status(paths.sqlite_path, sources, ranges)
         emit_success("index.build", result)
 
     run("index.build", _run)

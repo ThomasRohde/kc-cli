@@ -36,7 +36,7 @@ from kc.fingerprints import raw_fingerprint
 from kc.ids import new_id
 from kc.locks import FileLock
 from kc.models.artifact import ArtifactRecord, SourceRef
-from kc.models.citation import CitationEdgeRecord
+from kc.models.citation import ArtifactLocator, CitationEdgeRecord
 from kc.models.plan import PlanRecord
 from kc.output import emit, emit_success, envelope, is_llm_mode
 from kc.paths import current_paths, ensure_under_root, repo_relative
@@ -44,6 +44,32 @@ from kc.provenance.citations import validate_citations
 from kc.store.sqlite import get_idempotency, rebuild_index, save_idempotency, save_plan
 
 app = typer.Typer(help="Create, validate, diff, and safely apply knowledge artifacts.")
+
+ALLOWED_ARTIFACT_TYPES = {
+    "knowledge_page",
+    "glossary",
+    "decision_note",
+    "source_index",
+    "log_entry",
+    "eval_pack",
+}
+ALLOWED_ARTIFACT_STATUSES = {"draft", "active", "deprecated", "superseded"}
+REQUIRED_MARKDOWN_FRONTMATTER = {
+    "schema_version",
+    "artifact_id",
+    "title",
+    "status",
+    "domain",
+    "artifact_type",
+    "requires_citations",
+    "source_refs",
+}
+ALLOWED_STATUS_TRANSITIONS = {
+    "draft": {"draft", "active", "deprecated", "superseded"},
+    "active": {"active", "deprecated", "superseded"},
+    "deprecated": {"deprecated"},
+    "superseded": {"superseded"},
+}
 
 
 def _artifact_template(
@@ -158,6 +184,11 @@ def validate_artifact_file(
     frontmatter: dict[str, Any] = {}
     body = ""
     text = target.read_text(encoding="utf-8-sig")
+    sources = load_sources()
+    ranges = load_ranges()
+    source_ids = {source.source_id for source in sources}
+    range_by_id = {source_range.range_id: source_range for source_range in ranges}
+    existing = artifact_by_path(target)
     if target.suffix.lower() in {".md", ".markdown"}:
         frontmatter, body, text = read_markdown_artifact(target)
         if not frontmatter:
@@ -168,7 +199,51 @@ def validate_artifact_file(
                     "line": 1,
                 }
             )
+        missing_fields = sorted(REQUIRED_MARKDOWN_FRONTMATTER - set(frontmatter))
+        if missing_fields:
+            errors.append(
+                {
+                    "code": "KC_ARTIFACT_SCHEMA_INVALID",
+                    "message": "Markdown artifact frontmatter is missing required fields.",
+                    "details": {"missing_fields": missing_fields},
+                }
+            )
+        declared_schema = frontmatter.get("schema_version")
+        if schema and declared_schema != schema:
+            errors.append(
+                {
+                    "code": "KC_ARTIFACT_SCHEMA_INVALID",
+                    "message": f"Artifact schema_version does not match --schema {schema}.",
+                    "details": {"schema": schema, "actual": declared_schema},
+                }
+            )
         status = str(frontmatter.get("status", "draft"))
+        artifact_type = str(frontmatter.get("artifact_type", "knowledge_page"))
+        if artifact_type not in ALLOWED_ARTIFACT_TYPES:
+            errors.append(
+                {
+                    "code": "KC_ARTIFACT_SCHEMA_INVALID",
+                    "message": f"Unknown artifact_type: {artifact_type}",
+                    "details": {"artifact_type": artifact_type},
+                }
+            )
+        if status not in ALLOWED_ARTIFACT_STATUSES:
+            errors.append(
+                {
+                    "code": "KC_ARTIFACT_STATUS_INVALID",
+                    "message": f"Unknown artifact status: {status}",
+                    "details": {"status": status},
+                }
+            )
+        if existing and status not in ALLOWED_STATUS_TRANSITIONS.get(existing.status, {existing.status}):
+            errors.append(
+                {
+                    "code": "KC_ARTIFACT_STATUS_INVALID",
+                    "message": f"Invalid artifact status transition: {existing.status} -> {status}",
+                    "details": {"from": existing.status, "to": status},
+                }
+            )
+        errors.extend(_validate_source_refs(frontmatter.get("source_refs"), source_ids, range_by_id))
         requires_citations = bool(frontmatter.get("requires_citations", True))
         required_sections = {"summary", "source-backed facts", "open questions"}
         headings = required_section_names(body)
@@ -223,6 +298,35 @@ def validate_artifact_file(
             )
             data = {}
         checks.append({"name": "json_parse", "passed": not errors})
+        if isinstance(data, dict):
+            missing_json_fields = sorted(
+                {"schema_version", "artifact_id", "title", "artifact_type", "status"} - set(data)
+            )
+            if missing_json_fields:
+                errors.append(
+                    {
+                        "code": "KC_ARTIFACT_SCHEMA_INVALID",
+                        "message": "JSON artifact is missing required fields.",
+                        "details": {"missing_fields": missing_json_fields},
+                    }
+                )
+        if schema and isinstance(data, dict) and data.get("schema_version") != schema:
+            errors.append(
+                {
+                    "code": "KC_ARTIFACT_SCHEMA_INVALID",
+                    "message": f"JSON artifact schema_version does not match --schema {schema}.",
+                    "details": {"schema": schema, "actual": data.get("schema_version")},
+                }
+            )
+        json_edges, json_problems = _validate_json_citations(
+            data,
+            artifact_path=repo_relative(target),
+            artifact_id=data.get("artifact_id") if isinstance(data, dict) else None,
+            sources_by_id={source.source_id: source for source in sources},
+            ranges_by_id=range_by_id,
+        )
+        edges.extend(json_edges)
+        errors.extend(json_problems)
         frontmatter = {
             "schema_version": schema or data.get("schema_version", "kc.json_artifact.v1")
             if isinstance(data, dict)
@@ -258,6 +362,163 @@ def validate_artifact_file(
     }
 
 
+def _validate_source_refs(
+    raw_refs: Any,
+    source_ids: set[str],
+    range_by_id: dict[str, Any],
+) -> list[dict[str, Any]]:
+    errors: list[dict[str, Any]] = []
+    if raw_refs is None:
+        return errors
+    if not isinstance(raw_refs, list):
+        return [
+            {
+                "code": "KC_ARTIFACT_SCHEMA_INVALID",
+                "message": "source_refs must be a list.",
+            }
+        ]
+    for ref in raw_refs:
+        if not isinstance(ref, dict):
+            errors.append(
+                {
+                    "code": "KC_ARTIFACT_SCHEMA_INVALID",
+                    "message": "source_refs entries must be objects.",
+                }
+            )
+            continue
+        source_id = ref.get("source_id")
+        if source_id not in source_ids:
+            errors.append(
+                {
+                    "code": "KC_CITATION_SOURCE_MISSING",
+                    "message": f"source_refs source does not exist: {source_id}",
+                    "source_id": source_id,
+                }
+            )
+        for range_id in ref.get("ranges", ref.get("range_ids", [])) or []:
+            range_record = range_by_id.get(range_id)
+            if range_record is None:
+                errors.append(
+                    {
+                        "code": "KC_CITATION_RANGE_MISSING",
+                        "message": f"source_refs range does not exist: {range_id}",
+                        "source_id": source_id,
+                        "range_id": range_id,
+                    }
+                )
+            elif source_id is not None and range_record.source_id != source_id:
+                errors.append(
+                    {
+                        "code": "KC_CITATION_RANGE_MISSING",
+                        "message": f"source_refs range does not belong to source: {range_id}",
+                        "source_id": source_id,
+                        "range_id": range_id,
+                    }
+                )
+    return errors
+
+
+def _validate_json_citations(
+    data: Any,
+    *,
+    artifact_path: str,
+    artifact_id: str | None,
+    sources_by_id: dict[str, Any],
+    ranges_by_id: dict[str, Any],
+) -> tuple[list[CitationEdgeRecord], list[dict[str, Any]]]:
+    edges: list[CitationEdgeRecord] = []
+    problems: list[dict[str, Any]] = []
+    timestamp = now()
+
+    def visit(value: Any, pointer: str) -> None:
+        if isinstance(value, dict):
+            raw_citations = value.get("citations")
+            if isinstance(raw_citations, list):
+                for citation in raw_citations:
+                    if not isinstance(citation, dict):
+                        problems.append(
+                            {
+                                "code": "KC_CITATION_INVALID_TOKEN",
+                                "message": "JSON artifact citation entries must be objects.",
+                                "pointer": pointer,
+                            }
+                        )
+                        continue
+                    source_id = str(citation.get("source_id", ""))
+                    range_id = citation.get("range_id")
+                    range_id_str = str(range_id) if range_id is not None else ""
+                    source = sources_by_id.get(source_id)
+                    range_record = ranges_by_id.get(range_id_str)
+                    status = "valid"
+                    if source is None:
+                        status = "missing_source"
+                        problems.append(
+                            {
+                                "code": "KC_CITATION_SOURCE_MISSING",
+                                "message": f"JSON citation source does not exist: {source_id}",
+                                "pointer": pointer,
+                                "source_id": source_id,
+                            }
+                        )
+                    elif range_record is None:
+                        status = "missing_range"
+                        problems.append(
+                            {
+                                "code": "KC_CITATION_RANGE_MISSING",
+                                "message": f"JSON citation range does not exist: {range_id}",
+                                "pointer": pointer,
+                                "source_id": source_id,
+                                "range_id": range_id_str,
+                            }
+                        )
+                    elif range_record.source_id != source_id:
+                        status = "locator_mismatch"
+                        problems.append(
+                            {
+                                "code": "KC_CITATION_RANGE_MISSING",
+                                "message": f"JSON citation range does not belong to source: {range_id}",
+                                "pointer": pointer,
+                                "source_id": source_id,
+                                "range_id": range_id_str,
+                            }
+                        )
+                    elif range_record.source_fingerprint != source.fingerprint:
+                        status = "stale_source"
+                        problems.append(
+                            {
+                                "code": "KC_CITATION_STALE_SOURCE",
+                                "message": f"JSON citation points to stale source fingerprint: {range_id}",
+                                "pointer": pointer,
+                                "source_id": source_id,
+                                "range_id": range_id_str,
+                            }
+                        )
+                    edges.append(
+                        CitationEdgeRecord(
+                            edge_id=new_id("cite"),
+                            artifact_id=artifact_id,
+                            artifact_path=artifact_path,
+                            artifact_locator=ArtifactLocator(start_line=1, end_line=1),
+                            citation_token=f"json:{source_id}:{range_id_str}",
+                            source_id=source_id,
+                            range_id=range_id_str or None,
+                            source_fingerprint_at_validation=source.fingerprint if source else None,
+                            validated_at=timestamp,
+                            status=status,  # type: ignore[arg-type]
+                            metadata={"json_pointer": pointer or "/"},
+                        )
+                    )
+            for key, child in value.items():
+                escaped = str(key).replace("~", "~0").replace("/", "~1")
+                visit(child, f"{pointer}/{escaped}")
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, f"{pointer}/{index}")
+
+    visit(data, "")
+    return edges, problems
+
+
 @app.command("validate", help="Validate artifact schema, required sections, citations, and provenance.")
 def validate(
     file: Annotated[Path, typer.Option("--file", help="Artifact file.")],
@@ -269,25 +530,26 @@ def validate(
     def _run() -> None:
         result = validate_artifact_file(file, allow_uncited=allow_uncited, schema=schema)
         if not result["valid"]:
-            errors = [
-                {
-                    "code": item.get("code", "KC_ARTIFACT_SCHEMA_INVALID"),
-                    "category": "validation",
-                    "message": item.get("message", "Artifact validation failed."),
-                    "exit_code": EXIT_PROVENANCE
-                    if str(item.get("code", "")).startswith("KC_CITATION")
-                    else EXIT_VALIDATION,
-                    "retryable": False,
-                    "suggested_action": "fix artifact content or citations",
-                    "details": item,
-                }
-                for item in result["errors"]
-            ]
+            errors = []
+            for item in result["errors"]:
+                code = str(item.get("code", "KC_ARTIFACT_SCHEMA_INVALID"))
+                exit_code = (
+                    EXIT_PROVENANCE if str(code).startswith("KC_CITATION") else EXIT_VALIDATION
+                )
+                errors.append(
+                    KcError(
+                        code=code,
+                        message=item.get("message", "Artifact validation failed."),
+                        details=item,
+                        exit_code=exit_code,
+                        suggested_action="fix artifact content or citations",
+                    ).to_message()
+                )
             exit_code = max(error["exit_code"] for error in errors) if errors else EXIT_VALIDATION
             emit(
                 envelope(
                     "artifact.validate",
-                    {k: v for k, v in result.items() if k not in {"text", "body"}},
+                    None,
                     ok=False,
                     target={"file": str(file)},
                     errors=errors,
@@ -321,6 +583,19 @@ def diff(
             target,
             registered_fingerprint=existing.fingerprint if existing else None,
         )
+        try:
+            validation = validate_artifact_file(target)
+            plan = _enrich_plan(plan, target=target, validation=validation, existing=existing)
+        except KcError as exc:
+            plan = plan.model_copy(
+                update={
+                    "risk_flags": sorted({*plan.risk_flags, "validation_errors"}),
+                    "metadata": {
+                        **plan.metadata,
+                        "validation_error": exc.to_message(),
+                    },
+                }
+            )
         emit_success(
             "artifact.diff",
             {
@@ -380,6 +655,88 @@ def _record_from_validation(
     )
 
 
+def _enrich_plan(
+    plan: PlanRecord,
+    *,
+    target: Path,
+    validation: dict[str, Any],
+    existing: ArtifactRecord | None,
+) -> PlanRecord:
+    frontmatter = validation.get("frontmatter") or {}
+    new_status = str(frontmatter.get("status", existing.status if existing else "draft"))
+    valid_edges = [
+        edge
+        for edge in validation.get("citation_edges", [])
+        if isinstance(edge, dict) and edge.get("status") == "valid"
+    ]
+    old_ref_count = (
+        sum(len(ref.range_ids) for ref in existing.source_refs)
+        if existing is not None
+        else 0
+    )
+    risk_flags = set(plan.risk_flags)
+    if existing and existing.status == "active":
+        risk_flags.add("updates_active_artifact")
+    if existing and existing.status != new_status:
+        risk_flags.add("status_transition")
+    if old_ref_count > len(valid_edges):
+        risk_flags.add("removes_citations")
+    if "[kc:uncited]" in str(validation.get("text", "")):
+        risk_flags.add("adds_uncited_claim_markers")
+    if any(
+        isinstance(error, dict) and error.get("code") == "KC_CITATION_STALE_SOURCE"
+        for error in validation.get("errors", [])
+    ):
+        risk_flags.add("stale_source_reference")
+
+    operations = [
+        operation.model_copy(
+            update={
+                "risk": "medium" if risk_flags else "low",
+                "details": {
+                    **operation.details,
+                    "registry_change": "update" if existing else "create",
+                    "citation_edges_after": len(valid_edges),
+                    "artifact_status_after": new_status,
+                },
+            }
+        )
+        for operation in plan.operations
+    ]
+    metadata = {
+        **plan.metadata,
+        "direct_edit_apply": True,
+        "artifact_path": repo_relative(target),
+        "registry_changes": {
+            "artifact": "update" if existing else "create",
+            "before_fingerprint": existing.fingerprint if existing else None,
+            "after_fingerprint": validation.get("fingerprint"),
+        },
+        "citation_edge_changes": {
+            "after": len(valid_edges),
+            "registered_before": old_ref_count,
+        },
+        "log_preview": _log_entry_text(
+            markdown_title(frontmatter, validation.get("body") or "", target.stem),
+            repo_relative(target),
+            validation.get("fingerprint"),
+            plan.plan_id,
+        ),
+        "changed_files": [
+            repo_relative(current_paths().artifacts_jsonl),
+            repo_relative(current_paths().citation_edges_jsonl),
+            repo_relative(current_paths().log_path),
+            repo_relative(current_paths().sqlite_path),
+            repo_relative(current_paths().plans_dir / f"{plan.plan_id}.json"),
+        ],
+    }
+    return plan.model_copy(
+        update={
+            "operations": operations,
+            "risk_flags": sorted(risk_flags),
+            "metadata": metadata,
+        }
+    )
 def _target_from_plan_path(path: str) -> Path:
     candidate = Path(path)
     if candidate.is_absolute():
@@ -488,6 +845,36 @@ def _save_plan_file(plan: PlanRecord) -> str:
     return repo_relative(plan_path)
 
 
+def _snapshot_kc_state(snapshot_dir: Path, paths: Any) -> list[dict[str, str]]:
+    snapshots: list[dict[str, str]] = []
+    for source in [
+        paths.artifacts_jsonl,
+        paths.citation_edges_jsonl,
+        paths.log_path,
+    ]:
+        if not source.exists():
+            continue
+        destination = snapshot_dir / ".kc-state" / source.name
+        copy_snapshot(source, destination)
+        snapshots.append(
+            {
+                "path": repo_relative(source),
+                "fingerprint": raw_fingerprint(source),
+                "snapshot_path": repo_relative(destination),
+            }
+        )
+    return snapshots
+
+
+def _log_entry_text(title: str, path: str, fingerprint: str | None, plan_id: str) -> str:
+    return (
+        f"## {datetime.now(UTC).date().isoformat()} - {title}\n\n"
+        f"- Plan: {plan_id}\n"
+        f"- Artifact: {path}\n"
+        f"- Fingerprint: {fingerprint}\n\n"
+    )
+
+
 @app.command("apply", help="Validate, lock, snapshot, register, and apply an artifact safely.")
 def apply(
     file: Annotated[Path | None, typer.Option("--file", help="Artifact file.")] = None,
@@ -535,6 +922,26 @@ def apply(
         effective_dry_run = dry_run or not yes
         previous = get_idempotency(paths.sqlite_path, idempotency_key) if idempotency_key else None
         if previous:
+            current_fingerprint = raw_fingerprint(target) if target.exists() else None
+            previous_plan = previous.get("plan") if isinstance(previous.get("plan"), dict) else {}
+            previous_ops = previous_plan.get("operations") if isinstance(previous_plan, dict) else []
+            previous_op = previous_ops[0] if isinstance(previous_ops, list) and previous_ops else {}
+            previous_after = previous_op.get("after_fingerprint") if isinstance(previous_op, dict) else None
+            previous_path = previous_op.get("path") if isinstance(previous_op, dict) else None
+            if previous_after != current_fingerprint or (
+                previous_path and repo_relative(_target_from_plan_path(str(previous_path))) != repo_relative(target)
+            ):
+                raise KcError(
+                    code="KC_PLAN_PRECONDITION_FAILED",
+                    message="Idempotency key was already used for a different artifact state.",
+                    details={
+                        "key": idempotency_key,
+                        "previous_path": previous_path,
+                        "target": repo_relative(target),
+                        "previous_fingerprint": previous_after,
+                        "current_fingerprint": current_fingerprint,
+                    },
+                )
             previous["noop"] = True
             previous["idempotency"] = {"key": idempotency_key, "status": "replayed"}
             emit_success("artifact.apply", previous, target={"file": repo_relative(target)})
@@ -582,6 +989,7 @@ def apply(
                 mode="dry_run" if effective_dry_run else "apply",
                 idempotency_key=idempotency_key,
             )
+        plan = _enrich_plan(plan, target=target, validation=validation, existing=existing)
         if effective_dry_run:
             emit_success(
                 "artifact.apply",
@@ -600,6 +1008,17 @@ def apply(
         with FileLock(
             paths.locks_dir, path_lock_name(target), "artifact.apply", repo_relative(target)
         ):
+            locked_fingerprint = raw_fingerprint(target)
+            if locked_fingerprint != validation["fingerprint"]:
+                raise KcError(
+                    code="KC_PLAN_PRECONDITION_FAILED",
+                    message="Artifact changed after validation and before lock acquisition.",
+                    details={
+                        "path": repo_relative(target),
+                        "validated_fingerprint": validation["fingerprint"],
+                        "locked_fingerprint": locked_fingerprint,
+                    },
+                )
             artifact = _record_from_validation(target, validation, existing)
             artifacts = [a for a in load_artifacts() if a.path != artifact.path]
             artifacts.append(artifact)
@@ -619,6 +1038,7 @@ def apply(
             )
             snapshot_path = snapshot_dir / Path(artifact.path).name
             copy_snapshot(target, snapshot_path)
+            state_snapshots = _snapshot_kc_state(snapshot_dir, paths)
             save_artifacts(sorted(artifacts, key=lambda a: a.path))
             save_citation_edges(all_edges)
             if cfg.update_log:
@@ -648,7 +1068,8 @@ def apply(
                             "path": artifact.path,
                             "fingerprint": validation["fingerprint"],
                             "snapshot_path": repo_relative(snapshot_path),
-                        }
+                        },
+                        *state_snapshots,
                     ],
                 },
             }
@@ -661,10 +1082,5 @@ def apply(
 
 def _append_log(log_path: Path, artifact: ArtifactRecord, plan_id: str) -> None:
     current = log_path.read_text(encoding="utf-8") if log_path.exists() else "# Knowledge Log\n\n"
-    entry = (
-        f"## {datetime.now(UTC).date().isoformat()} - {artifact.title}\n\n"
-        f"- Plan: {plan_id}\n"
-        f"- Artifact: {artifact.path}\n"
-        f"- Fingerprint: {artifact.fingerprint}\n\n"
-    )
+    entry = _log_entry_text(artifact.title, artifact.path, artifact.fingerprint, plan_id)
     atomic_write_text(log_path, current.rstrip() + "\n\n" + entry)

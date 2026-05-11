@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -140,6 +141,56 @@ def init_db(db_path: Path) -> None:
         conn.close()
 
 
+def index_corpus_fingerprint(
+    sources: list[SourceRecord],
+    ranges: list[SourceRangeRecord],
+) -> str:
+    digest = hashlib.sha256()
+    for source in sorted(sources, key=lambda item: item.source_id):
+        digest.update(source.source_id.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(source.fingerprint.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update("|".join(source.domain).encode("utf-8"))
+        digest.update(b"\0")
+    for source_range in sorted(ranges, key=lambda item: item.range_id):
+        digest.update(source_range.range_id.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(source_range.source_fingerprint.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(source_range.text_hash.encode("utf-8"))
+        digest.update(b"\0")
+    return f"sha256:{digest.hexdigest()}"
+
+
+def load_index_metadata(db_path: Path, key: str = "last_build") -> dict[str, Any] | None:
+    if not db_path.exists():
+        return None
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        row = conn.execute("SELECT value_json FROM index_metadata WHERE key = ?", (key,)).fetchone()
+        return None if row is None else orjson.loads(row["value_json"])
+    finally:
+        conn.close()
+
+
+def index_status(
+    db_path: Path,
+    sources: list[SourceRecord],
+    ranges: list[SourceRangeRecord],
+) -> dict[str, Any]:
+    sqlite_exists = db_path.exists()
+    current_fingerprint = index_corpus_fingerprint(sources, ranges)
+    metadata = load_index_metadata(db_path)
+    return {
+        "sqlite_exists": sqlite_exists,
+        "last_build": metadata,
+        "current_corpus_fingerprint": current_fingerprint,
+        "stale": not metadata or metadata.get("corpus_fingerprint") != current_fingerprint,
+    }
+
+
 def rebuild_index(
     db_path: Path,
     sources: list[SourceRecord],
@@ -239,7 +290,18 @@ def rebuild_index(
             replace_citation_edges(conn, citation_edges)
         conn.execute(
             "INSERT OR REPLACE INTO index_metadata(key, value_json, updated_at) VALUES (?, ?, ?)",
-            ("last_build", json.dumps({"built_at": timestamp, "ranges": len(ranges)}), timestamp),
+            (
+                "last_build",
+                json.dumps(
+                    {
+                        "built_at": timestamp,
+                        "sources": len(sources),
+                        "ranges": len(ranges),
+                        "corpus_fingerprint": index_corpus_fingerprint(sources, ranges),
+                    }
+                ),
+                timestamp,
+            ),
         )
         conn.commit()
         return {"sources": len(sources), "ranges": len(ranges), "built_at": timestamp}

@@ -7,8 +7,9 @@ import typer
 import yaml
 
 from kc.commands.common import run
+from kc.errors import KcError
 from kc.output import emit_success
-from kc.paths import current_paths
+from kc.paths import current_paths, ensure_under_root, repo_relative
 from kc.search.fts import ensure_index, search_ranges
 
 app = typer.Typer(help="Run deterministic retrieval evaluation packs.")
@@ -22,8 +23,21 @@ def run_eval(
         paths = current_paths()
         ensure_index(paths.sqlite_path, paths.sources_jsonl, paths.ranges_jsonl)
         cases: list[dict[str, Any]] = []
-        if pack and pack.exists():
-            data = yaml.safe_load(pack.read_text(encoding="utf-8")) or {}
+        pack_path = ensure_under_root((Path.cwd() / pack).resolve()) if pack else None
+        if pack_path:
+            if not pack_path.exists():
+                raise KcError(
+                    code="KC_FILE_NOT_FOUND",
+                    message=f"Eval pack not found: {repo_relative(pack_path)}",
+                    details={"path": repo_relative(pack_path)},
+                )
+            data = yaml.safe_load(pack_path.read_text(encoding="utf-8")) or {}
+            if not isinstance(data, dict):
+                raise KcError(
+                    code="KC_CONFIG_INVALID",
+                    message="Eval pack must be a YAML object.",
+                    details={"path": repo_relative(pack_path)},
+                )
             cases = list(data.get("cases", []))
         results = []
         for case in cases:
@@ -43,10 +57,17 @@ def run_eval(
                     "results": found,
                 }
             )
+        failed = [item for item in results if not item["passed"]]
+        if failed:
+            raise KcError(
+                code="KC_ARTIFACT_SCHEMA_INVALID",
+                message="Retrieval eval failed.",
+                details={"failed": failed, "total": len(results)},
+            )
         emit_success(
             "eval.run",
             {
-                "pack": str(pack) if pack else None,
+                "pack": repo_relative(pack_path) if pack_path else None,
                 "total": len(results),
                 "passed": sum(1 for item in results if item["passed"]),
                 "results": results,

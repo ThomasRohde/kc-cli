@@ -1,0 +1,59 @@
+{
+  "schema_version": "kc.result.v1",
+  "request_id": "<request_id>",
+  "ok": true,
+  "command": "conformance",
+  "target": {},
+  "result": {
+    "profile": "v1",
+    "valid": true,
+    "summary": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0
+    },
+    "checks": [
+      {
+        "check_id": "guide.required_sections",
+        "passed": true,
+        "message": "Guide exposes all required V1 sections.",
+        "details": {}
+      },
+      {
+        "check_id": "guide.command_fields",
+        "passed": true,
+        "message": "Every guide command has the required manifest fields.",
+        "details": {}
+      },
+      {
+        "check_id": "guide.public_commands",
+        "passed": true,
+        "message": "Guide command IDs match the public command set.",
+        "details": {}
+      },
+      {
+        "check_id": "renderers.coverage",
+        "passed": true,
+        "message": "Human renderer coverage matches guide commands.",
+        "details": {}
+      },
+      {
+        "check_id": "errors.contract",
+        "passed": true,
+        "message": "Guide errors and common errors resolve to the stable KcError contract.",
+        "details": {}
+      },
+      {
+        "check_id": "envelope.shape",
+        "passed": true,
+        "message": "JSON envelope exposes the locked V1 fields.",
+        "details": {}
+      }
+    ]
+  },
+  "warnings": [],
+  "errors": [],
+  "metrics": {
+    "duration_ms": "<duration_ms>"
+  }
+}

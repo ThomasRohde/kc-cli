@@ -6,6 +6,7 @@ import typer
 
 from kc.commands.common import load_artifacts, load_ranges, run
 from kc.config import load_config
+from kc.errors import KcError
 from kc.output import emit_success, warning
 from kc.paths import current_paths
 from kc.search.fts import ensure_index, search_ranges
@@ -22,7 +23,21 @@ def _parse_budget(raw: str | None) -> dict[str, int]:
             continue
         key, value = part.split("=", 1)
         if key.strip() in parsed:
-            parsed[key.strip()] = int(value.strip())
+            try:
+                parsed[key.strip()] = int(value.strip())
+            except ValueError as exc:
+                raise KcError(
+                    code="KC_CONFIG_INVALID",
+                    message=f"Invalid context budget value: {part}",
+                    details={"budget": raw},
+                ) from exc
+    for key, value in parsed.items():
+        if value < 1:
+            raise KcError(
+                code="KC_CONFIG_INVALID",
+                message=f"Context budget must be positive: {key}={value}",
+                details={"budget": raw, "key": key, "value": value},
+            )
     return parsed
 
 
@@ -46,6 +61,18 @@ def prepare(
 ) -> None:
     def _run() -> None:
         paths = current_paths()
+        if grounding not in {"required", "optional"}:
+            raise KcError(
+                code="KC_CONFIG_INVALID",
+                message=f"Unsupported grounding policy: {grounding}",
+                details={"grounding": grounding, "supported": ["required", "optional"]},
+            )
+        if mode not in {"bm25", "semantic", "hybrid"}:
+            raise KcError(
+                code="KC_RETRIEVAL_MODEL_UNAVAILABLE",
+                message=f"Unsupported retrieval mode: {mode}",
+                details={"mode": mode, "supported": ["bm25", "semantic", "hybrid"]},
+            )
         limits = _parse_budget(budget)
         ensure_index(paths.sqlite_path, paths.sources_jsonl, paths.ranges_jsonl)
         candidate_ranges = search_ranges(
@@ -98,10 +125,15 @@ def prepare(
                 "grounding_policy": grounding,
                 "citation_policy": {
                     "material_claims_require_citations": grounding == "required",
-                    "citation_token_format": "[kc:src_<id>:L<start>-L<end>]",
+                    "citation_token_formats": [
+                        "[kc:src_<id>:L<start>-L<end>]",
+                        "[kc:src_<id>:JP:<percent-encoded-json-pointer>]",
+                        "[kc:src_<id>:CSV:R<start>-R<end>]",
+                    ],
                 },
                 "agent_instructions": [
                     "Use the returned source ranges for factual claims.",
+                    "If no candidate range supports a claim, mark it [kc:todo] or leave it out.",
                     "Do not invent owner, authority, review date, or lifecycle status.",
                     "If sources conflict, report the conflict instead of silently resolving it.",
                     "kc does not answer the question; you must write the answer or artifact.",

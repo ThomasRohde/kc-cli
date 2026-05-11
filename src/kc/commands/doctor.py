@@ -5,10 +5,11 @@ from typing import Annotated
 
 import typer
 
-from kc.commands.common import load_ranges, run
+from kc.commands.common import load_ranges, load_sources, run
 from kc.output import emit_success
 from kc.paths import current_paths
 from kc.search.semantic import semantic_index_status
+from kc.store.sqlite import index_status
 
 app = typer.Typer(help="Inspect repository health, locks, and semantic index state.")
 
@@ -21,6 +22,7 @@ def doctor(ctx: typer.Context) -> None:
     def _run() -> None:
         paths = current_paths()
         ranges = load_ranges() if paths.ranges_jsonl.exists() else []
+        sources = load_sources() if paths.sources_jsonl.exists() else []
         emit_success(
             "doctor",
             {
@@ -31,6 +33,7 @@ def doctor(ctx: typer.Context) -> None:
                 "locks": len(list(paths.locks_dir.glob("*.lock")))
                 if paths.locks_dir.exists()
                 else 0,
+                "index": index_status(paths.sqlite_path, sources, ranges),
                 "semantic": semantic_index_status(paths.sqlite_path, ranges),
             },
         )

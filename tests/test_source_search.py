@@ -46,6 +46,73 @@ def test_source_add_extracts_ranges_and_search_returns_citation(
     assert first["citation_token"].startswith("[kc:src_")
 
 
+def test_structured_sources_emit_json_pointer_and_csv_citations(
+    tmp_path: Path, monkeypatch
+) -> None:
+    init_repo(tmp_path, monkeypatch)
+    json_source = tmp_path / "policy.json"
+    json_source.write_text(
+        '{"policy": {"owner": "platform team", "review": "quarterly"}}',
+        encoding="utf-8",
+    )
+    csv_source = tmp_path / "controls.csv"
+    csv_source.write_text("control,owner\nlogging,security team\n", encoding="utf-8")
+
+    assert runner.invoke(app, ["source", "add", "policy.json", "--domain", "ops", "--yes"]).exit_code == 0
+    assert runner.invoke(app, ["source", "add", "controls.csv", "--domain", "ops", "--yes"]).exit_code == 0
+
+    json_search = runner.invoke(app, ["source", "search", "platform", "--domain", "ops"])
+    assert json_search.exit_code == 0
+    json_hit = parse(json_search.output)["result"]["results"][0]
+    assert json_hit["locator"]["kind"] == "json_pointer"
+    assert json_hit["citation_token"].startswith("[kc:src_")
+    assert ":JP:/policy/owner]" in json_hit["citation_token"]
+
+    csv_search = runner.invoke(app, ["source", "search", "security", "--domain", "ops"])
+    assert csv_search.exit_code == 0
+    csv_hit = parse(csv_search.output)["result"]["results"][0]
+    assert csv_hit["locator"]["kind"] == "csv_row_range"
+    assert ":CSV:R2-R2]" in csv_hit["citation_token"]
+
+    artifact = tmp_path / "knowledge" / "wiki" / "structured.md"
+    artifact.write_text(
+        f"""---
+schema_version: kc.knowledge_page.v1
+artifact_id: art_structured
+title: Structured
+status: draft
+domain: [ops]
+artifact_type: knowledge_page
+requires_citations: true
+source_refs: []
+---
+# Structured
+
+## Summary
+
+The owner is represented in structured source data. {json_hit["citation_token"]}
+
+## Source-backed facts
+
+- The control owner is represented in CSV data. {csv_hit["citation_token"]}
+
+## Open questions
+
+- [kc:todo] Confirm ownership cadence.
+""",
+        encoding="utf-8",
+    )
+    validate = runner.invoke(
+        app, ["artifact", "validate", "--file", str(artifact.relative_to(tmp_path))]
+    )
+    assert validate.exit_code == 0
+    citation_check = runner.invoke(
+        app, ["citation", "check", "--file", str(artifact.relative_to(tmp_path))]
+    )
+    assert citation_check.exit_code == 0
+    assert parse(citation_check.output)["result"]["files"][0]["citations"] == 2
+
+
 def test_source_inspect_reports_staleness(tmp_path: Path, monkeypatch) -> None:
     init_repo(tmp_path, monkeypatch)
     source = tmp_path / "policy.md"
@@ -103,3 +170,19 @@ def test_source_refresh_dry_run_and_yes_preserves_source_id(
 
     lint = runner.invoke(app, ["lint", "--checks", "stale"])
     assert lint.exit_code == 0
+
+
+def test_lint_detects_duplicate_ids(tmp_path: Path, monkeypatch) -> None:
+    init_repo(tmp_path, monkeypatch)
+    source = tmp_path / "policy.md"
+    source.write_text("ownership text\n", encoding="utf-8")
+    assert runner.invoke(app, ["source", "add", "policy.md", "--yes"]).exit_code == 0
+    sources_jsonl = tmp_path / "knowledge" / "sources.jsonl"
+    first_line = sources_jsonl.read_text(encoding="utf-8").splitlines()[0]
+    sources_jsonl.write_text(first_line + "\n" + first_line + "\n", encoding="utf-8")
+
+    lint = runner.invoke(app, ["lint", "--checks", "duplicates"])
+    assert lint.exit_code == 10
+    payload = parse(lint.output)
+    assert payload["errors"][0]["code"] == "KC_CONFIG_INVALID"
+    assert "Duplicate source_id" in payload["errors"][0]["message"]

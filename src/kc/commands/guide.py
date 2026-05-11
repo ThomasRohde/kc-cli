@@ -5,7 +5,7 @@ from typing import Annotated, Any
 import typer
 
 from kc import __version__
-from kc.commands.common import require_json_format, run
+from kc.commands.common import run
 from kc.errors import ERROR_EXIT_MAP
 from kc.output import SCHEMA_VERSION, emit_success
 
@@ -19,7 +19,12 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
         "compatibility": {
             "additive_changes": "minor",
             "breaking_changes": "major",
-            "stable_contracts": ["kc.result.v1", "KC_* error codes", "core JSONL schemas"],
+            "stable_contracts": [
+                "kc.result.v1 JSON envelopes",
+                "KC_* error codes",
+                "core JSONL schemas",
+                "deterministic table and markdown human views",
+            ],
         },
         "capabilities": {
             "calls_llm": False,
@@ -29,6 +34,15 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
             "hybrid_search": "optional_rrf",
             "safe_apply": True,
             "task_wait_state": True,
+        },
+        "retrieval_models": {
+            "semantic": {
+                "provider": "model2vec",
+                "model": "potion-base-8M",
+                "purpose": "ranking_only",
+                "network": "never called by kc at runtime",
+                "activation": "explicit --mode semantic|hybrid or kc index build --semantic",
+            }
         },
         "bootstrap": {
             "bootstrap_sequence": [
@@ -49,12 +63,32 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
             "agent_rule": "The agent writes semantic content. kc validates, indexes, and applies safely.",
         },
         "global_options": {
-            "--format": {"values": ["json", "table", "markdown"], "default": "json"},
+            "--format": {
+                "values": ["json", "table", "markdown"],
+                "default": "json",
+                "contract": "json emits kc.result.v1; table and markdown emit deterministic human views",
+            },
             "--data-dir": {"default": "knowledge"},
             "--state-dir": {"default": ".kc"},
             "--quiet": {"type": "bool"},
             "--request-id": {"type": "string"},
             "--no-input": {"type": "bool"},
+        },
+        "output_formats": {
+            "json": {
+                "contract": "machine",
+                "shape": "kc.result.v1 envelope",
+                "failure_result": None,
+            },
+            "table": {
+                "contract": "human",
+                "shape": "deterministic command-specific text table",
+            },
+            "markdown": {
+                "contract": "human",
+                "shape": "deterministic command-specific markdown",
+            },
+            "llm_mode": "LLM=true always forces json output, quiet mode, no prompts, and no ANSI.",
         },
         "environment": {
             "LLM=true": "forces JSON, quiet/no ANSI/no prompts, and blocks unsafe validation skips",
@@ -69,7 +103,12 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
             "plan": "kc.plan.v1",
         },
         "citation_syntax": {
-            "markdown": "[kc:src_<id>:L<start>-L<end>]",
+            "markdown": [
+                "[kc:src_<id>:L<start>-L<end>]",
+                "[kc:src_<id>:JP:<percent-encoded-json-pointer>]",
+                "[kc:src_<id>:CSV:R<start>-R<end>]",
+            ],
+            "json_artifacts": "Use structured citations: [{\"source_id\":\"src_...\",\"range_id\":\"rng_...\"}]",
             "markers": ["[kc:inference]", "[kc:todo]", "[kc:uncited]"],
             "rule": "[kc:uncited] fails unless explicitly allowed; [kc:todo] is draft-only.",
         },
@@ -90,6 +129,8 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
                 "kc artifact new --type knowledge_page --path knowledge/wiki/ownership.md --title 'Ownership' --yes",
                 "Edit the page with cited facts.",
                 "kc artifact validate --file knowledge/wiki/ownership.md",
+                "kc artifact diff --file knowledge/wiki/ownership.md",
+                "kc artifact apply --file knowledge/wiki/ownership.md --dry-run",
                 "kc artifact apply --file knowledge/wiki/ownership.md --yes",
             ],
         },
@@ -133,6 +174,25 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
             "90": "Internal error",
         },
     }
+    full["errors"] = {
+        "shape": {
+            "code": "KC_*",
+            "category": "stable category string",
+            "message": "human-readable explanation",
+            "exit_code": "stable numeric exit code",
+            "retryable": "boolean",
+            "suggested_action": "machine-friendly next action",
+            "details": "structured details object",
+        },
+        "error_codes": full["error_codes"],
+        "exit_codes": full["exit_codes"],
+    }
+    full["examples"] = {
+        "json_contract": "kc --format json guide --section commands",
+        "table_human": "kc --format table lint",
+        "markdown_human": "kc --format markdown source search 'ownership lifecycle'",
+        "llm_forced_json": "LLM=true kc --format table guide",
+    }
     if section:
         if section not in full:
             return {"section": section, "available_sections": sorted(full)}
@@ -140,52 +200,266 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
     return full
 
 
-def _commands() -> dict[str, Any]:
+def _command(
+    syntax: str,
+    *,
+    mutates: bool,
+    confirmation: str,
+    important_options: list[str],
+    result_summary: str,
+    examples: list[str],
+    common_errors: list[str],
+    exit_codes: list[int],
+) -> dict[str, Any]:
     return {
-        "guide": {"mutates": False, "syntax": "kc guide [--section SECTION]"},
-        "init": {"mutates": True, "syntax": "kc init --dry-run|--yes"},
-        "source.add": {"mutates": True, "syntax": "kc source add FILE --domain DOMAIN --yes"},
-        "source.inspect": {
-            "mutates": False,
-            "syntax": "kc source inspect SOURCE_OR_PATH [--ranges]",
-        },
-        "source.refresh": {
-            "mutates": True,
-            "syntax": "kc source refresh SOURCE_OR_PATH --dry-run|--yes",
-        },
-        "source.search": {
-            "mutates": False,
-            "syntax": "kc source search QUERY [--domain DOMAIN] [--mode bm25|semantic|hybrid]",
-        },
-        "index.build": {"mutates": True, "syntax": "kc index build [--semantic]"},
-        "context.prepare": {
-            "mutates": False,
-            "syntax": "kc context prepare --ask ASK --shape SHAPE [--mode bm25|semantic|hybrid]",
-        },
-        "artifact.new": {
-            "mutates": True,
-            "syntax": "kc artifact new --type TYPE --path PATH --title TITLE",
-        },
-        "artifact.validate": {"mutates": False, "syntax": "kc artifact validate --file PATH"},
-        "artifact.diff": {"mutates": False, "syntax": "kc artifact diff --file PATH"},
-        "artifact.apply": {
-            "mutates": True,
-            "syntax": "kc artifact apply --file PATH|--plan PLAN --dry-run|--yes [--idempotency-key KEY]",
-        },
-        "citation.check": {"mutates": False, "syntax": "kc citation check --file PATH|--all"},
-        "lint": {"mutates": False, "syntax": "kc lint"},
-        "task.start": {"mutates": True, "syntax": "kc task start --goal GOAL"},
-        "task.status": {"mutates": False, "syntax": "kc task status --task-id TASK_ID"},
-        "task.inspect": {"mutates": False, "syntax": "kc task inspect --task-id TASK_ID"},
-        "task.resume": {
-            "mutates": True,
-            "syntax": "kc task resume --task-id TASK_ID --event EVENT --input JSON",
-        },
-        "eval.run": {"mutates": False, "syntax": "kc eval run [--pack FILE]"},
-        "export": {"mutates": False, "syntax": "kc export --format jsonl|markdown-bundle|llms-txt"},
-        "doctor": {"mutates": False, "syntax": "kc doctor"},
-        "doctor.locks": {"mutates": True, "syntax": "kc doctor locks [--clear-stale --yes]"},
+        "command_id": "",
+        "mutates": mutates,
+        "confirmation": confirmation,
+        "syntax": syntax,
+        "important_options": important_options,
+        "result_summary": result_summary,
+        "examples": examples,
+        "common_errors": common_errors,
+        "exit_codes": exit_codes,
     }
+
+
+def _commands() -> dict[str, Any]:
+    commands = {
+        "guide": _command(
+            "kc guide [--section SECTION]",
+            mutates=False,
+            confirmation="none",
+            important_options=["--section"],
+            result_summary="CLI manifest, schemas, workflows, examples, and error taxonomy.",
+            examples=["kc guide", "kc guide --section commands"],
+            common_errors=["KC_UNSUPPORTED_FEATURE"],
+            exit_codes=[0, 80],
+        ),
+        "conformance": _command(
+            "kc conformance",
+            mutates=False,
+            confirmation="none",
+            important_options=[],
+            result_summary="Read-only V1 CLI manifest, renderer, error, and envelope conformance checks.",
+            examples=["kc conformance", "kc --format markdown conformance"],
+            common_errors=["KC_CONFORMANCE_FAILED"],
+            exit_codes=[0, 10],
+        ),
+        "init": _command(
+            "kc init --dry-run|--yes",
+            mutates=True,
+            confirmation="dry-run unless --yes",
+            important_options=["--profile", "--dry-run", "--yes"],
+            result_summary="Planned, created, and existing repository layout paths.",
+            examples=["kc init --dry-run", "kc init --yes"],
+            common_errors=["KC_PATH_OUTSIDE_REPO", "KC_CONFIG_INVALID"],
+            exit_codes=[0, 10],
+        ),
+        "source.add": _command(
+            "kc source add FILE --domain DOMAIN --dry-run|--yes",
+            mutates=True,
+            confirmation="dry-run unless --yes",
+            important_options=["--domain", "--copy", "--dry-run", "--yes"],
+            result_summary="Source ID, fingerprints, media type, copied path, and extracted range count.",
+            examples=["kc source add docs/policy.md --domain policy --dry-run"],
+            common_errors=["KC_SOURCE_ALREADY_REGISTERED", "KC_FILE_NOT_FOUND", "KC_SOURCE_UNSUPPORTED_MEDIA_TYPE"],
+            exit_codes=[0, 11, 12, 80],
+        ),
+        "source.inspect": _command(
+            "kc source inspect SOURCE_OR_PATH [--ranges]",
+            mutates=False,
+            confirmation="none",
+            important_options=["--ranges"],
+            result_summary="Registered source metadata, current fingerprint state, and optional ranges.",
+            examples=["kc source inspect docs/policy.md --ranges"],
+            common_errors=["KC_SOURCE_NOT_FOUND"],
+            exit_codes=[0, 11],
+        ),
+        "source.refresh": _command(
+            "kc source refresh SOURCE_OR_PATH --dry-run|--yes",
+            mutates=True,
+            confirmation="dry-run unless --yes",
+            important_options=["--dry-run", "--yes"],
+            result_summary="Fingerprint changes, replaced ranges, impacted artifacts, and index status.",
+            examples=["kc source refresh docs/policy.md --dry-run"],
+            common_errors=["KC_SOURCE_NOT_FOUND", "KC_FILE_NOT_FOUND", "KC_SOURCE_UNSUPPORTED_MEDIA_TYPE"],
+            exit_codes=[0, 11, 80],
+        ),
+        "source.search": _command(
+            "kc source search QUERY [--domain DOMAIN] [--mode bm25|semantic|hybrid]",
+            mutates=False,
+            confirmation="none",
+            important_options=["--domain", "--limit", "--mode"],
+            result_summary="Ranked source ranges with citation tokens and retrieval scores.",
+            examples=["kc source search 'ownership lifecycle' --domain policy"],
+            common_errors=["KC_INDEX_BUILD_FAILED", "KC_RETRIEVAL_MODEL_UNAVAILABLE"],
+            exit_codes=[0, 30, 31],
+        ),
+        "index.build": _command(
+            "kc index build [--semantic] [--dry-run]",
+            mutates=True,
+            confirmation="cache rebuild; --dry-run previews",
+            important_options=["--semantic", "--clean", "--dry-run"],
+            result_summary="SQLite/BM25 rebuild status and optional semantic index metadata.",
+            examples=["kc index build", "kc index build --semantic"],
+            common_errors=["KC_INDEX_BUILD_FAILED", "KC_RETRIEVAL_MODEL_UNAVAILABLE"],
+            exit_codes=[0, 30, 31],
+        ),
+        "context.prepare": _command(
+            "kc context prepare --ask ASK --shape SHAPE [--mode bm25|semantic|hybrid]",
+            mutates=False,
+            confirmation="none",
+            important_options=["--ask", "--shape", "--domain", "--target", "--grounding", "--budget", "--mode"],
+            result_summary="Grounded source context, artifact matches, citation policy, and next commands.",
+            examples=["kc context prepare --ask 'Create an ownership page' --shape knowledge_page"],
+            common_errors=["KC_INDEX_BUILD_FAILED", "KC_RETRIEVAL_MODEL_UNAVAILABLE"],
+            exit_codes=[0, 30, 31],
+        ),
+        "artifact.new": _command(
+            "kc artifact new --type TYPE --path PATH --title TITLE --dry-run|--yes",
+            mutates=True,
+            confirmation="dry-run unless --yes",
+            important_options=["--path", "--title", "--type", "--domain", "--source-id", "--status", "--dry-run", "--yes"],
+            result_summary="Deterministic artifact skeleton metadata and preview content on dry run.",
+            examples=["kc artifact new --type knowledge_page --path knowledge/wiki/ownership.md --title Ownership --dry-run"],
+            common_errors=["KC_FILE_EXISTS", "KC_PATH_OUTSIDE_REPO"],
+            exit_codes=[0, 10, 12],
+        ),
+        "artifact.validate": _command(
+            "kc artifact validate --file PATH",
+            mutates=False,
+            confirmation="none",
+            important_options=["--file", "--schema", "--allow-uncited"],
+            result_summary="Artifact validity, checks, fingerprint, and citation edges.",
+            examples=["kc artifact validate --file knowledge/wiki/ownership.md"],
+            common_errors=["KC_ARTIFACT_NOT_FOUND", "KC_VALIDATION_MISSING_CITATION", "KC_CITATION_RANGE_MISSING"],
+            exit_codes=[0, 10, 11, 20],
+        ),
+        "artifact.diff": _command(
+            "kc artifact diff --file PATH",
+            mutates=False,
+            confirmation="none",
+            important_options=["--file", "--against"],
+            result_summary="Structured artifact apply plan, diff text, and risk flags.",
+            examples=["kc artifact diff --file knowledge/wiki/ownership.md"],
+            common_errors=["KC_ARTIFACT_NOT_FOUND", "KC_UNSUPPORTED_FEATURE"],
+            exit_codes=[0, 11, 80],
+        ),
+        "artifact.apply": _command(
+            "kc artifact apply --file PATH|--plan PLAN --dry-run|--yes [--idempotency-key KEY]",
+            mutates=True,
+            confirmation="dry-run unless --yes",
+            important_options=["--file", "--plan", "--dry-run", "--yes", "--skip-validate", "--idempotency-key"],
+            result_summary="Apply plan, validation result, artifact record, citation edge count, and snapshot.",
+            examples=["kc artifact apply --file knowledge/wiki/ownership.md --dry-run"],
+            common_errors=["KC_APPLY_NOT_VALIDATED", "KC_PLAN_PRECONDITION_FAILED", "KC_LOCK_HELD"],
+            exit_codes=[0, 10, 13, 60],
+        ),
+        "citation.check": _command(
+            "kc citation check --file PATH|--all",
+            mutates=False,
+            confirmation="none",
+            important_options=["--file", "--all", "--fail-on-warning"],
+            result_summary="Citation edge validity and provenance problems for selected artifacts.",
+            examples=["kc citation check --file knowledge/wiki/ownership.md"],
+            common_errors=["KC_CITATION_INVALID_TOKEN", "KC_CITATION_RANGE_MISSING"],
+            exit_codes=[0, 20],
+        ),
+        "lint": _command(
+            "kc lint [--checks citations,stale,orphans,duplicates,index,log|all]",
+            mutates=False,
+            confirmation="none",
+            important_options=["--checks"],
+            result_summary="Repository integrity status, enabled checks, counts, and issues.",
+            examples=["kc lint", "kc --format markdown lint"],
+            common_errors=["KC_SOURCE_STALE", "KC_ARTIFACT_SCHEMA_INVALID"],
+            exit_codes=[0, 10, 20],
+        ),
+        "task.start": _command(
+            "kc task start --goal GOAL",
+            mutates=True,
+            confirmation="task state write; no --yes required",
+            important_options=["--goal", "--shape", "--domain", "--target", "--await-agent"],
+            result_summary="Task record, candidate ranges, instructions, and resume command.",
+            examples=["kc task start --goal 'Create ownership page' --target knowledge/wiki/ownership.md"],
+            common_errors=["KC_INDEX_BUILD_FAILED"],
+            exit_codes=[0, 30, 40],
+        ),
+        "task.status": _command(
+            "kc task status --task-id TASK_ID",
+            mutates=False,
+            confirmation="none",
+            important_options=["--task-id"],
+            result_summary="Compact task state and next commands.",
+            examples=["kc task status --task-id task_01HX"],
+            common_errors=["KC_TASK_NOT_FOUND"],
+            exit_codes=[0, 11],
+        ),
+        "task.inspect": _command(
+            "kc task inspect --task-id TASK_ID",
+            mutates=False,
+            confirmation="none",
+            important_options=["--task-id"],
+            result_summary="Full stored task record.",
+            examples=["kc task inspect --task-id task_01HX"],
+            common_errors=["KC_TASK_NOT_FOUND"],
+            exit_codes=[0, 11],
+        ),
+        "task.resume": _command(
+            "kc task resume --task-id TASK_ID --event EVENT --input JSON",
+            mutates=True,
+            confirmation="task state write; no --yes required",
+            important_options=["--task-id", "--event", "--input"],
+            result_summary="Updated task record with appended event.",
+            examples=["kc task resume --task-id task_01HX --event artifact_created --input @event.json"],
+            common_errors=["KC_TASK_NOT_FOUND", "KC_TASK_NOT_WAITING", "KC_EVENT_INVALID", "KC_JSON_INVALID"],
+            exit_codes=[0, 10, 11, 13],
+        ),
+        "eval.run": _command(
+            "kc eval run [--pack FILE]",
+            mutates=False,
+            confirmation="none",
+            important_options=["--pack"],
+            result_summary="Retrieval eval case totals, pass count, and case results.",
+            examples=["kc eval run --pack knowledge/evals/basic.yaml"],
+            common_errors=["KC_INDEX_BUILD_FAILED", "KC_FILE_NOT_FOUND", "KC_CONFIG_INVALID", "KC_ARTIFACT_SCHEMA_INVALID"],
+            exit_codes=[0, 10, 11, 30],
+        ),
+        "export": _command(
+            "kc export --format jsonl|markdown-bundle|llms-txt [--out FILE]",
+            mutates=True,
+            confirmation="writes --out when provided; no --yes required",
+            important_options=["--format", "--out"],
+            result_summary="Export format, byte count, output path, or inline content.",
+            examples=["kc export --format llms-txt", "kc export --format markdown-bundle --out knowledge/exports/bundle.md"],
+            common_errors=["KC_UNSUPPORTED_FEATURE", "KC_PATH_OUTSIDE_REPO"],
+            exit_codes=[0, 10, 80],
+        ),
+        "doctor": _command(
+            "kc doctor",
+            mutates=False,
+            confirmation="none",
+            important_options=[],
+            result_summary="Config, state, lock count, and semantic index health.",
+            examples=["kc doctor"],
+            common_errors=["KC_RETRIEVAL_MODEL_UNAVAILABLE"],
+            exit_codes=[0, 31],
+        ),
+        "doctor.locks": _command(
+            "kc doctor locks [--clear-stale --yes]",
+            mutates=True,
+            confirmation="dry-run unless --clear-stale --yes",
+            important_options=["--clear-stale", "--yes"],
+            result_summary="Lock files, metadata, clear-stale flag, and cleared files.",
+            examples=["kc doctor locks", "kc doctor locks --clear-stale --yes"],
+            common_errors=["KC_LOCK_HELD"],
+            exit_codes=[0, 60],
+        ),
+    }
+    for command_id, contract in commands.items():
+        contract["command_id"] = command_id
+    return commands
 
 
 def register(app: typer.Typer) -> None:
@@ -200,7 +474,6 @@ def register(app: typer.Typer) -> None:
         ] = None,
     ) -> None:
         def _run() -> None:
-            require_json_format("guide")
             emit_success("guide", build_guide(section), target={"section": section})
 
         run("guide", _run)

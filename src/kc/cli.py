@@ -140,6 +140,7 @@ def main(
         from kc.errors import KcError
         from kc.output import emit_error
 
+        state.format = "json"
         emit_error(
             "kc",
             KcError(
@@ -148,19 +149,19 @@ def main(
                 details={"requested": format, "supported": ["json", "table", "markdown"]},
             ),
         )
-    state.format = (
-        "json" if (is_llm_mode() or not is_interactive()) and format == "json" else format
-    )
+    state.format = "json" if is_llm_mode() else format
     state.quiet = quiet or is_llm_mode() or not is_interactive()
 
 
 from kc.commands import artifact, citation, context, doctor, eval, index, source, task  # noqa: E402
+from kc.commands import conformance as conformance_command  # noqa: E402
 from kc.commands import export as export_command  # noqa: E402
 from kc.commands import guide as guide_command  # noqa: E402
 from kc.commands import init as init_command  # noqa: E402
 from kc.commands import lint as lint_command  # noqa: E402
 
 guide_command.register(app)
+conformance_command.register(app)
 init_command.register(app)
 lint_command.register(app)
 export_command.register(app)

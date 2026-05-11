@@ -6,6 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import orjson
 
@@ -14,7 +15,7 @@ from kc.models.source import SourceRecord
 from kc.models.source_range import SourceRangeRecord
 from kc.search.semantic import assert_semantic_index_ready, semantic_rankings
 from kc.store.jsonl import read_jsonl
-from kc.store.sqlite import init_db, rebuild_index
+from kc.store.sqlite import index_status, init_db, rebuild_index
 
 
 @dataclass(frozen=True)
@@ -35,10 +36,11 @@ class CombinedRank:
 
 
 def ensure_index(db_path: Path, sources_path: Path, ranges_path: Path) -> None:
-    if db_path.exists():
-        return
     sources = read_jsonl(sources_path, SourceRecord)
     ranges = read_jsonl(ranges_path, SourceRangeRecord)
+    status = index_status(db_path, sources, ranges)
+    if status["sqlite_exists"] and not status["stale"]:
+        return
     rebuild_index(db_path, sources, ranges)
 
 
@@ -51,8 +53,10 @@ def citation_token(source_id: str, locator: dict[str, Any]) -> str:
     if locator.get("kind") == "line_range":
         return f"[kc:{source_id}:L{locator.get('start_line')}-L{locator.get('end_line')}]"
     if locator.get("kind") == "json_pointer":
-        pointer = str(locator.get("pointer", "/")).replace("]", "%5D").replace("[", "%5B")
+        pointer = quote(str(locator.get("pointer", "/")), safe="/~")
         return f"[kc:{source_id}:JP:{pointer}]"
+    if locator.get("kind") == "csv_row_range":
+        return f"[kc:{source_id}:CSV:R{locator.get('start_row')}-R{locator.get('end_row')}]"
     return f"[kc:{source_id}]"
 
 

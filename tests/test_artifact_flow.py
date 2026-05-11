@@ -6,6 +6,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from kc.cli import app
+from kc.commands.common import path_lock_name
 
 runner = CliRunner()
 
@@ -162,7 +163,10 @@ This paragraph has no citation.
     assert result.exit_code == 10
     payload = parse(result.output)
     assert payload["ok"] is False
-    assert payload["errors"][0]["code"] == "KC_VALIDATION_MISSING_CITATION"
+    assert {error["code"] for error in payload["errors"]} >= {
+        "KC_ARTIFACT_SCHEMA_INVALID",
+        "KC_VALIDATION_MISSING_CITATION",
+    }
 
 
 def test_llm_mode_blocks_skip_validate(tmp_path: Path, monkeypatch) -> None:
@@ -183,6 +187,131 @@ def test_llm_mode_blocks_skip_validate(tmp_path: Path, monkeypatch) -> None:
     )
     assert result.exit_code == 10
     assert parse(result.output)["errors"][0]["code"] == "KC_APPLY_NOT_VALIDATED"
+
+
+def test_artifact_validate_detects_malformed_and_stale_citations(
+    tmp_path: Path, monkeypatch
+) -> None:
+    hit = setup_repo_with_source(tmp_path, monkeypatch)
+    artifact = write_valid_artifact(tmp_path, hit["citation_token"])
+    artifact.write_text(
+        artifact.read_text(encoding="utf-8").replace(hit["citation_token"], "[kc:src_bad:L1]"),
+        encoding="utf-8",
+    )
+    malformed = runner.invoke(
+        app, ["artifact", "validate", "--file", str(artifact.relative_to(tmp_path))]
+    )
+    assert malformed.exit_code == 20
+    assert "KC_CITATION_INVALID_TOKEN" in {
+        error["code"] for error in parse(malformed.output)["errors"]
+    }
+
+    artifact = write_valid_artifact(tmp_path, hit["citation_token"])
+    (tmp_path / "policy.md").write_text("changed source text\n", encoding="utf-8")
+    stale = runner.invoke(
+        app, ["artifact", "validate", "--file", str(artifact.relative_to(tmp_path))]
+    )
+    assert stale.exit_code == 20
+    assert "KC_CITATION_STALE_SOURCE" in {
+        error["code"] for error in parse(stale.output)["errors"]
+    }
+
+
+def test_active_artifact_rejects_todo_and_uncited_markers(
+    tmp_path: Path, monkeypatch
+) -> None:
+    hit = setup_repo_with_source(tmp_path, monkeypatch)
+    artifact = write_valid_artifact(tmp_path, hit["citation_token"])
+    artifact.write_text(
+        artifact.read_text(encoding="utf-8")
+        .replace("status: draft", "status: active")
+        .replace("[kc:todo] Confirm review cadence.", "[kc:uncited] Confirm review cadence."),
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app, ["artifact", "validate", "--file", str(artifact.relative_to(tmp_path))]
+    )
+    assert result.exit_code == 10
+    codes = {error["code"] for error in parse(result.output)["errors"]}
+    assert "KC_VALIDATION_MISSING_CITATION" in codes
+
+
+def test_json_artifact_schema_and_structured_citations(
+    tmp_path: Path, monkeypatch
+) -> None:
+    hit = setup_repo_with_source(tmp_path, monkeypatch)
+    artifact = tmp_path / "knowledge" / "artifacts" / "glossary.json"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text(
+        json.dumps(
+            {
+                "schema_version": "kc.glossary.v1",
+                "artifact_id": "art_json",
+                "title": "Glossary",
+                "artifact_type": "glossary",
+                "status": "draft",
+                "domain": ["bcm"],
+                "terms": [
+                    {
+                        "term": "Owner",
+                        "definition": "Maintains lifecycle state.",
+                        "citations": [
+                            {"source_id": hit["source_id"], "range_id": hit["range_id"]}
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "artifact",
+            "validate",
+            "--file",
+            str(artifact.relative_to(tmp_path)),
+            "--schema",
+            "kc.glossary.v1",
+        ],
+    )
+    assert result.exit_code == 0
+    assert parse(result.output)["result"]["citation_edges"][0]["status"] == "valid"
+
+
+def test_artifact_apply_rejects_idempotency_key_conflict(
+    tmp_path: Path, monkeypatch
+) -> None:
+    hit = setup_repo_with_source(tmp_path, monkeypatch)
+    artifact = write_valid_artifact(tmp_path, hit["citation_token"])
+    rel = str(artifact.relative_to(tmp_path))
+    first = runner.invoke(
+        app, ["artifact", "apply", "--file", rel, "--yes", "--idempotency-key", "idem-conflict"]
+    )
+    assert first.exit_code == 0
+    artifact.write_text(
+        artifact.read_text(encoding="utf-8").replace("maintain definitions", "maintain definitions safely"),
+        encoding="utf-8",
+    )
+    second = runner.invoke(
+        app, ["artifact", "apply", "--file", rel, "--yes", "--idempotency-key", "idem-conflict"]
+    )
+    assert second.exit_code == 13
+    assert parse(second.output)["errors"][0]["code"] == "KC_PLAN_PRECONDITION_FAILED"
+
+
+def test_artifact_apply_reports_lock_held(tmp_path: Path, monkeypatch) -> None:
+    hit = setup_repo_with_source(tmp_path, monkeypatch)
+    artifact = write_valid_artifact(tmp_path, hit["citation_token"])
+    rel = str(artifact.relative_to(tmp_path))
+    lock_dir = tmp_path / ".kc" / "locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_name = path_lock_name(artifact.resolve())
+    (lock_dir / f"{lock_name}.lock").write_text('{"command":"test"}\n', encoding="utf-8")
+
+    result = runner.invoke(app, ["artifact", "apply", "--file", rel, "--yes"])
+    assert result.exit_code == 60
+    assert parse(result.output)["errors"][0]["code"] == "KC_LOCK_HELD"
 
 
 def test_artifact_apply_plan_rejects_changed_artifact(

@@ -9,6 +9,7 @@ from kc.atomic_write import atomic_write_text
 from kc.commands.common import load_artifacts, load_citation_edges, load_ranges, load_sources, run
 from kc.errors import KcError
 from kc.output import emit_success
+from kc.paths import ensure_under_root, repo_relative
 
 
 def register(app: typer.Typer) -> None:
@@ -34,13 +35,14 @@ def register(app: typer.Typer) -> None:
                     details={"supported": ["jsonl", "markdown-bundle", "llms-txt"]},
                 )
             if out:
-                atomic_write_text(Path.cwd() / out, content)
+                target = ensure_under_root((Path.cwd() / out).resolve())
+                atomic_write_text(target, content)
             emit_success(
                 "export",
                 {
                     "format": export_format,
                     "bytes": len(content.encode("utf-8")),
-                    "out": str(out) if out else None,
+                    "out": repo_relative(target) if out else None,
                     "content": None if out else content,
                 },
             )
