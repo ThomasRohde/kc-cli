@@ -13,7 +13,7 @@ This project uses Semantic Versioning for the Python package version exposed by
   `src/kc/__init__.py::__version__`, run the published verification commands,
   and tag releases as `vX.Y.Z`.
 
-## [1.0.0] - 2026-05-11
+## [0.2.0] - 2026-05-11
 
 ### Changed
 
