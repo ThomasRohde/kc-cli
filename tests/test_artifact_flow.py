@@ -127,6 +127,22 @@ def test_artifact_validate_diff_and_apply(tmp_path: Path, monkeypatch) -> None:
     assert replay_payload["result"]["idempotency"]["status"] == "replayed"
 
 
+def test_artifact_diff_rejects_missing_file(tmp_path: Path, monkeypatch) -> None:
+    setup_repo_with_source(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["artifact", "diff", "--file", "knowledge/wiki/missing.md"])
+    assert result.exit_code == 11
+    payload = parse(result.output)
+    assert payload["errors"][0]["code"] == "KC_ARTIFACT_NOT_FOUND"
+
+
+def test_artifact_apply_missing_plan_is_file_not_found(tmp_path: Path, monkeypatch) -> None:
+    setup_repo_with_source(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["artifact", "apply", "--plan", "missing_plan.json", "--yes"])
+    assert result.exit_code == 11
+    payload = parse(result.output)
+    assert payload["errors"][0]["code"] == "KC_FILE_NOT_FOUND"
+
+
 def test_artifact_validate_fails_missing_citation(tmp_path: Path, monkeypatch) -> None:
     setup_repo_with_source(tmp_path, monkeypatch)
     artifact = tmp_path / "knowledge" / "wiki" / "bad.md"
@@ -273,6 +289,38 @@ def test_active_artifact_rejects_todo_and_uncited_markers(
     assert result.exit_code == 10
     codes = {error["code"] for error in parse(result.output)["errors"]}
     assert "KC_VALIDATION_MISSING_CITATION" in codes
+
+
+def test_draft_todo_markers_emit_warning(tmp_path: Path, monkeypatch) -> None:
+    hit = setup_repo_with_source(tmp_path, monkeypatch)
+    artifact = write_valid_artifact(tmp_path, hit["citation_token"])
+    result = runner.invoke(
+        app, ["artifact", "validate", "--file", str(artifact.relative_to(tmp_path))]
+    )
+    assert result.exit_code == 0
+    payload = parse(result.output)
+    assert "KC_ARTIFACT_TODO_MARKERS" in {item["code"] for item in payload["warnings"]}
+
+
+def test_artifact_new_rejects_unknown_status(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert runner.invoke(app, ["init", "--yes"]).exit_code == 0
+    result = runner.invoke(
+        app,
+        [
+            "artifact",
+            "new",
+            "--path",
+            "knowledge/artifacts/test.md",
+            "--title",
+            "T",
+            "--status",
+            "weird_status",
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 10
+    assert parse(result.output)["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
 
 
 def test_json_artifact_schema_and_structured_citations(

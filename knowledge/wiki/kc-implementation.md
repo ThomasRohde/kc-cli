@@ -16,17 +16,23 @@ source_refs:
     ranges: []
   - source_id: src_01KR8GD8XVCEYBW80M2SKVZVKS
     ranges: []
+  - source_id: src_01KR8GD9T9JFNPC5R9WMBHWXCH
+    ranges: []
   - source_id: src_01KR8GDA7V19F05T6R93ZAWZ35
     ranges: []
   - source_id: src_01KR8Q43CZJXAM4ACWW4Y7GWT1
     ranges: []
   - source_id: src_01KR8Q47XCTWN53DZJ3BE8PD88
     ranges: []
+  - source_id: src_01KR8W45S5XX5M0XE6SA23EHK1
+    ranges: []
   - source_id: src_01KR8W45SSBZB8AA4FNSHZZFCQ
     ranges: []
   - source_id: src_01KR8W4S76SRDQKJDQ700PDTGG
     ranges: []
   - source_id: src_01KR8W7A30Q9G8RF9CYP7P7TCF
+    ranges: []
+  - source_id: src_01KR90ZDMFJ36C9QP9END5F46W
     ranges: []
   - source_id: src_01KR90ZGMHFEFNST5FRX05AER0
     ranges: []
@@ -38,11 +44,23 @@ source_refs:
     ranges: []
   - source_id: src_01KR93G7B0GP8C5J7WTECXA6NN
     ranges: []
+  - source_id: src_01KR93G85YFT0HVHVM8C8XAKRW
+    ranges: []
   - source_id: src_01KR93G91G16H3XQ8MHQ13NXJM
     ranges: []
   - source_id: src_01KR93G9W8C0NF3PE57GAV813F
     ranges: []
   - source_id: src_01KR93GAQK523QMTD7E1FH7RPF
+    ranges: []
+  - source_id: src_90D0AC3379D12836F586472A7D
+    ranges: []
+  - source_id: src_A3CBFE85BE1E938A3881D3498B
+    ranges: []
+  - source_id: src_D1DAAEE984DBDAA5CE1993D0D1
+    ranges: []
+  - source_id: src_9405FC69F97131789713475CFC
+    ranges: []
+  - source_id: src_CA300356A8703AE94ACE629B8A
     ranges: []
 ---
 
@@ -50,30 +68,27 @@ source_refs:
 
 ## Summary
 
-`kc-cli` is now closer to the v1 harness goal: citation parsing, source extraction, artifact validation, direct-edit apply, lint, index health, guide output, context preparation, export, and conformance coverage have all been hardened while preserving the local-first, retrieval-only CLI shape. The v1 design names line ranges, JSON pointers, and CSV row ranges as locator kinds, and it keeps semantic retrieval metadata local and ranking-only rather than generative. [kc:src_01KR89M77M0SR209C87M6RKAY2:L402-L405] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2210-L2213]
+`kc-cli` keeps the v1 local-first harness boundary: source registration, retrieval, context preparation, artifact validation, safe apply, and task state are deterministic CLI responsibilities, while external agents remain responsible for semantic authoring. [kc:src_01KR89M77M0SR209C87M6RKAY2:L2210-L2213] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2462-L2468] The 2026-05-11 black-box feedback pass tightened command-contract behavior around structured usage errors, invalid arguments, missing workspace state, stale-source warnings, artifact warnings, task resume payload validation, and guide/readme documentation without adding provider or generative reasoning dependencies. [kc:inference]
 
 ## Source-Backed Facts
 
-- Citation records and Markdown validation now share the same locator model for line ranges, JSON pointers, and CSV row ranges. [kc:src_01KR93G7B0GP8C5J7WTECXA6NN:L38-L47] [kc:src_01KR93G6FG1161NN4Z6Z2NVXBW:L18-L25] [kc:src_01KR93G6FG1161NN4Z6Z2NVXBW:L90-L104]
-- Citation validation detects malformed kc tokens, missing ranges, stale registered fingerprints, and changed current source fingerprints. [kc:src_01KR93G6FG1161NN4Z6Z2NVXBW:L68-L83] [kc:src_01KR93G6FG1161NN4Z6Z2NVXBW:L165-L188] [kc:src_01KR93G6FG1161NN4Z6Z2NVXBW:L189-L212]
-- Search token rendering emits Markdown citation tokens for line ranges, JSON pointers, and CSV row ranges, and human output renders JSON pointer and CSV row locators. [kc:src_01KR8GD8XVCEYBW80M2SKVZVKS:L52-L60] [kc:src_01KR8W45SSBZB8AA4FNSHZZFCQ:L151-L161]
-- Source extraction now treats JSON, YAML, TOML, and CSV as structured inputs where parsing succeeds, falling back to text extraction on parser failures; CSV rows receive `csv_row_range` locators. [kc:src_01KR93G4RJRP13TTXQX28SKF85:L48-L71] [kc:src_01KR93G4RJRP13TTXQX28SKF85:L72-L84] [kc:src_01KR93G4RJRP13TTXQX28SKF85:L215-L238]
-- Artifact validation enforces known artifact types and statuses, required Markdown frontmatter, valid status transitions, source references, required sections, citation coverage, and JSON artifact citation checks. [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L50-L73] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L193-L216] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L241-L264] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L392-L415] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L489-L512]
-- Artifact validation accepts public source-reference locator aliases such as `Lx-Ly`, `JP:<pointer>`, and CSV row aliases while still resolving them to registered source ranges; Markdown citation coverage errors are offset back to artifact file line numbers. [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L241-L264] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L265-L288] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L392-L415] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L416-L422] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L425-L434] [kc:src_01KR93G9W8C0NF3PE57GAV813F:L156-L179] [kc:src_01KR93G9W8C0NF3PE57GAV813F:L182-L202]
-- Artifact apply remains a direct-edit registry commit, but dry-run plans are enriched, idempotency conflicts are rejected, locks are used, fingerprints are rechecked under lock, and snapshots include the artifact plus kc-owned state files. [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L347-L370] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L724-L747] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L958-L981] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L1040-L1063] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L1064-L1087] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L1088-L1110]
-- Lint now has checks for duplicate IDs, orphan citation edges, missing source ranges, stale indexes, and log references, with index stale issues reported as `KC_INDEX_BUILD_FAILED`. [kc:src_01KR8W7A30Q9G8RF9CYP7P7TCF:L20-L41] [kc:src_01KR8W7A30Q9G8RF9CYP7P7TCF:L73-L96] [kc:src_01KR8W7A30Q9G8RF9CYP7P7TCF:L132-L141]
-- SQLite indexing stores source count, range count, and a corpus fingerprint; `index_status` compares current source/range state against the last build metadata so doctor, lint, and search can detect stale indexes. [kc:src_01KR93G5MN8R7Q1PCGH7RB4Y00:L178-L191] [kc:src_01KR93G5MN8R7Q1PCGH7RB4Y00:L290-L309] [kc:src_01KR8W45SSBZB8AA4FNSHZZFCQ:L657-L680]
-- Semantic retrieval remains bundled but retrieval-only: config and guide expose `model2vec`, `potion-base-8M`, checksum, explicit activation, and `ranking_only` purpose. [kc:src_01KR8GDB389BYFVFP2E09YMTD9:L38-L43] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L37-L60] [kc:src_01KR8GD8FTQ0BZXKM91NPZ4BC9:L60-L68]
-- `source add` computes a new source ID from URI and fingerprints before range extraction, so a dry-run preview reports the same source ID that `--yes` will register for unchanged input. [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L115-L138] [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L49-L57] [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L59-L61] [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L63-L65]
-- `task start` defaults to a zero process exit for successful `ok: true` waiting tasks; exit code 40 remains opt-in through `enable_wait_exit_code` for callers that explicitly want waiting states surfaced as a distinct code. [kc:src_01KR8GDB389BYFVFP2E09YMTD9:L54-L57] [kc:src_01KR8GDB389BYFVFP2E09YMTD9:L84-L86] [kc:src_01KR8GDB389BYFVFP2E09YMTD9:L88-L90] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L371-L394] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L178-L187]
-- `context prepare` validates grounding, mode, and retrieval budgets while retaining the v1 role of preparing evidence and instructions rather than answering the task itself. [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L44-L67] [kc:src_01KR89M77M0SR209C87M6RKAY2:L905-L905] [kc:src_01KR89M77M0SR209C87M6RKAY2:L925-L932]
-- `export --out` is path-safe and guide contracts now describe eval/export error behavior and mutation semantics through the standard envelope. [kc:src_01KR93G91G16H3XQ8MHQ13NXJM:L15-L38] [kc:src_01KR93G91G16H3XQ8MHQ13NXJM:L39-L48] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L419-L442]
-- Coverage was broadened for stable source-add previews, source-ref locator validation, missing-citation file line reporting, idempotent apply replay, idempotency conflict rejection, guide goldens, and conformance output. [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L49-L57] [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L59-L61] [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L63-L65] [kc:src_01KR93G9W8C0NF3PE57GAV813F:L156-L179] [kc:src_01KR93G9W8C0NF3PE57GAV813F:L182-L202] [kc:src_01KR93G9W8C0NF3PE57GAV813F:L112-L127] [kc:src_01KR93G9W8C0NF3PE57GAV813F:L321-L339] [kc:src_01KR90ZGMHFEFNST5FRX05AER0:L128-L129] [kc:src_01KR90ZGMHFEFNST5FRX05AER0:L136-L137]
+- Error definitions now distinguish process usage failures from domain validation failures: `EXIT_USAGE` is `2`, `KC_USAGE_ERROR` maps to usage failures, and `KC_VALIDATION_INVALID_ARGUMENT` remains a validation error. [kc:src_01KR90ZDMFJ36C9QP9END5F46W:L25-L48]
+- The CLI group catches Click usage errors, initializes output state, infers the command id when possible, and emits a structured `KC_USAGE_ERROR` envelope; invalid global `--format` values emit `KC_VALIDATION_INVALID_ARGUMENT` before normal command dispatch. [kc:src_01KR8W45S5XX5M0XE6SA23EHK1:L85-L108] [kc:src_01KR8W45S5XX5M0XE6SA23EHK1:L109-L116] [kc:src_01KR8W45S5XX5M0XE6SA23EHK1:L240-L250]
+- Shared command helpers now centralize choice validation, positive integer validation, named integer parsing for `context prepare --budget`, lint check parsing, JSON payload schema validation, data-store loading guards, and stale-source warning assembly. [kc:src_90D0AC3379D12836F586472A7D:L48-L64] [kc:src_90D0AC3379D12836F586472A7D:L67-L74] [kc:src_90D0AC3379D12836F586472A7D:L77-L100] [kc:src_90D0AC3379D12836F586472A7D:L101-L124] [kc:src_90D0AC3379D12836F586472A7D:L125-L131] [kc:src_90D0AC3379D12836F586472A7D:L236-L259] [kc:src_90D0AC3379D12836F586472A7D:L296-L319]
+- Storage-facing command helpers call `ensure_data_dir_exists()` before loading JSONL stores, so commands tolerate a missing `.kc` directory; the path helper creates the configured data directory and returns its path. [kc:src_90D0AC3379D12836F586472A7D:L154-L156] [kc:src_90D0AC3379D12836F586472A7D:L163-L165] [kc:src_90D0AC3379D12836F586472A7D:L172-L174] [kc:src_90D0AC3379D12836F586472A7D:L181-L183] [kc:src_A3CBFE85BE1E938A3881D3498B:L76-L84]
+- `artifact new` validates artifact type and status, `artifact validate` returns warnings as well as errors, draft TODO markers are reported with `KC_ARTIFACT_TODO_MARKERS`, and artifact apply carries validation warnings into dry-run and apply results. [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L598-L617] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L335-L358]
+- `artifact diff` validates `--against` and reports missing artifact files with `KC_ARTIFACT_NOT_FOUND`, while artifact plan loading reports missing plan files with `KC_FILE_NOT_FOUND`. [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L335-L358] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L598-L617]
+- `init` accepts only the `generic` profile and treats an existing `.kc/state.sqlite` as a successful noop rather than a fatal initialization error. [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L15-L15] [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L18-L41] [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L66-L89]
+- `source add` reports `KC_SOURCE_NO_RANGES` when extraction produces no ranges, duplicate source detection points callers at `kc source refresh <source_id> --dry-run`, and `source search` validates mode and positive limit values before returning results. [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L167-L190] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L331-L342] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L344-L361]
+- `source search` and `context prepare` attach stale-source warnings via the shared warning helper, and `context prepare` echoes parsed budget values after validating grounding, retrieval mode, and budget syntax. [kc:src_90D0AC3379D12836F586472A7D:L320-L336] [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L30-L53] [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L126-L132]
+- `task resume` validates JSON payloads against a task's expected event schema before appending the resume event. [kc:src_9405FC69F97131789713475CFC:L50-L73] [kc:src_9405FC69F97131789713475CFC:L74-L97] [kc:src_9405FC69F97131789713475CFC:L140-L163]
+- Guide contracts now document usage errors, BM25 scoring, marker meanings, process exit aggregation, and eval/export behavior; `eval run` requires `--pack`, and export results identify whether content was emitted inline or to a file. [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L431-L454]
+- Regression coverage includes invalid lint checks, empty lint checks, source search validation, stale-source warning propagation, artifact warnings, missing artifact/plan paths, usage envelopes, missing data-dir behavior, init idempotency, eval pack requirements, citation target requirements, and task resume schema validation. [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L252-L256] [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L258-L260] [kc:src_CA300356A8703AE94ACE629B8A:L44-L49] [kc:src_CA300356A8703AE94ACE629B8A:L51-L67]
 
 ## Inferences
 
-- This pass is intentionally v1-close rather than post-v1: it hardens the core harness and avoids adding SaaS ingestion, MCP, web UI, workflow-engine behavior, or generative LLM dependencies. [kc:inference] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2210-L2213] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2462-L2468]
-- The direct-edit artifact flow is preserved, but the registry commit is now safer because apply recomputes evidence after validation and records enough plan/snapshot detail for deterministic review. [kc:inference] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L1006-L1029] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L1064-L1087] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L1088-L1110]
+- The black-box feedback fixes are primarily command-contract hardening: they make failure modes machine-readable and predictable without expanding `kc` into a planner, workflow engine, or LLM provider integration. [kc:inference] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2210-L2213] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2462-L2468]
+- Centralizing validators and store guards should reduce future contract drift between commands, because new commands can reuse the same structured error and warning helpers instead of hand-rolling envelope details. [kc:inference] [kc:src_90D0AC3379D12836F586472A7D:L48-L64] [kc:src_90D0AC3379D12836F586472A7D:L154-L156] [kc:src_90D0AC3379D12836F586472A7D:L296-L319]
 
 ## Open Questions
 

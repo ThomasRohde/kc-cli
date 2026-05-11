@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 EXIT_OK = 0
+EXIT_USAGE = 2
 EXIT_VALIDATION = 10
 EXIT_NOT_FOUND = 11
 EXIT_ALREADY_EXISTS = 12
@@ -22,6 +23,7 @@ EXIT_INTERNAL = 90
 
 
 ERROR_EXIT_MAP: dict[str, int] = {
+    "KC_USAGE_ERROR": EXIT_USAGE,
     "KC_CONFIG_NOT_FOUND": EXIT_NOT_FOUND,
     "KC_CONFIG_INVALID": EXIT_VALIDATION,
     "KC_SOURCE_NOT_FOUND": EXIT_NOT_FOUND,
@@ -38,6 +40,7 @@ ERROR_EXIT_MAP: dict[str, int] = {
     "KC_CITATION_STALE_SOURCE": EXIT_PROVENANCE,
     "KC_VALIDATION_MISSING_CITATION": EXIT_VALIDATION,
     "KC_VALIDATION_TODO_IN_ACTIVE_ARTIFACT": EXIT_VALIDATION,
+    "KC_VALIDATION_INVALID_ARGUMENT": EXIT_VALIDATION,
     "KC_PLAN_PRECONDITION_FAILED": EXIT_CONFLICT,
     "KC_CONFORMANCE_FAILED": EXIT_VALIDATION,
     "KC_APPLY_REQUIRES_YES": EXIT_VALIDATION,
@@ -59,6 +62,7 @@ ERROR_EXIT_MAP: dict[str, int] = {
 
 ERROR_CATEGORIES: dict[str, str] = {
     "CONFIG": "configuration",
+    "USAGE": "usage",
     "SOURCE": "source",
     "RANGE": "source_range",
     "ARTIFACT": "artifact",
@@ -112,7 +116,7 @@ class KcError(Exception):
         if self.suggested_action is None:
             if self.retryable:
                 self.suggested_action = "retry"
-            elif self.exit_code in {EXIT_VALIDATION, EXIT_NOT_FOUND, EXIT_ALREADY_EXISTS}:
+            elif self.exit_code in {EXIT_USAGE, EXIT_VALIDATION, EXIT_NOT_FOUND, EXIT_ALREADY_EXISTS}:
                 self.suggested_action = "fix_input"
             elif self.exit_code == EXIT_LOCK:
                 self.suggested_action = "inspect lock with kc doctor locks or retry later"

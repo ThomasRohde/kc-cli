@@ -41,6 +41,32 @@ def test_task_start_returns_waiting_envelope(tmp_path: Path, monkeypatch) -> Non
     assert parse(status.output)["result"]["status"] == "awaiting_agent"
 
 
+def test_task_resume_enforces_expected_event_schema(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert runner.invoke(app, ["init", "--yes"]).exit_code == 0
+    start = runner.invoke(app, ["task", "start", "--goal", "Create ownership page"])
+    assert start.exit_code == 0
+    task_id = parse(start.output)["result"]["task"]["task_id"]
+
+    result = runner.invoke(
+        app,
+        [
+            "task",
+            "resume",
+            "--task-id",
+            task_id,
+            "--event",
+            "artifact_created",
+            "--input",
+            "{}",
+        ],
+    )
+    assert result.exit_code == 10
+    payload = parse(result.output)
+    assert payload["errors"][0]["code"] == "KC_EVENT_INVALID"
+    assert payload["errors"][0]["details"]["missing"] == ["path"]
+
+
 def test_task_start_wait_exit_code_is_opt_in(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     assert runner.invoke(app, ["init", "--yes"]).exit_code == 0

@@ -6,18 +6,20 @@ from typing import Annotated
 import typer
 
 from kc.atomic_write import atomic_write_text
-from kc.commands.common import run
+from kc.commands.common import run, validate_choice
 from kc.config import DEFAULT_CONFIG
 from kc.output import emit_success
 from kc.paths import current_paths, repo_relative
 from kc.store.sqlite import init_db
+
+ALLOWED_PROFILES = {"generic"}
 
 
 def register(app: typer.Typer) -> None:
     @app.command("init", help="Create the repo-local kc layout, config, JSONL stores, and SQLite state.")
     def init_command(
         profile: Annotated[
-            str, typer.Option("--profile", help="Initialization profile.")
+            str, typer.Option("--profile", help="Initialization profile: generic.")
         ] = "generic",
         dry_run: Annotated[
             bool, typer.Option("--dry-run", help="Preview without writing.")
@@ -25,6 +27,7 @@ def register(app: typer.Typer) -> None:
         yes: Annotated[bool, typer.Option("--yes", help="Create files.")] = False,
     ) -> None:
         def _run() -> None:
+            validate_choice(profile, option="--profile", supported=ALLOWED_PROFILES)
             paths = current_paths()
             effective_dry_run = dry_run or not yes
             dirs = [
@@ -74,11 +77,14 @@ def register(app: typer.Typer) -> None:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     atomic_write_text(path, content)
                     created.append(rel)
-            if effective_dry_run:
-                planned.append(repo_relative(paths.sqlite_path))
+            sqlite_rel = repo_relative(paths.sqlite_path)
+            if paths.sqlite_path.exists():
+                noop.append(sqlite_rel)
+            elif effective_dry_run:
+                planned.append(sqlite_rel)
             else:
                 init_db(paths.sqlite_path)
-                created.append(repo_relative(paths.sqlite_path))
+                created.append(sqlite_rel)
             emit_success(
                 "init",
                 {

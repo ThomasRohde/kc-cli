@@ -64,6 +64,7 @@
           "kc init --yes"
         ],
         "common_errors": [
+          "KC_VALIDATION_INVALID_ARGUMENT",
           "KC_PATH_OUTSIDE_REPO",
           "KC_CONFIG_INVALID"
         ],
@@ -158,11 +159,13 @@
           "kc source search 'ownership lifecycle' --domain policy"
         ],
         "common_errors": [
+          "KC_VALIDATION_INVALID_ARGUMENT",
           "KC_INDEX_BUILD_FAILED",
           "KC_RETRIEVAL_MODEL_UNAVAILABLE"
         ],
         "exit_codes": [
           0,
+          10,
           30,
           31
         ]
@@ -183,11 +186,13 @@
           "kc index build --semantic"
         ],
         "common_errors": [
+          "KC_VALIDATION_INVALID_ARGUMENT",
           "KC_INDEX_BUILD_FAILED",
           "KC_RETRIEVAL_MODEL_UNAVAILABLE"
         ],
         "exit_codes": [
           0,
+          10,
           30,
           31
         ]
@@ -240,6 +245,7 @@
           "kc artifact new --type knowledge_page --path knowledge/wiki/ownership.md --title Ownership --dry-run"
         ],
         "common_errors": [
+          "KC_VALIDATION_INVALID_ARGUMENT",
           "KC_FILE_EXISTS",
           "KC_PATH_OUTSIDE_REPO"
         ],
@@ -316,6 +322,7 @@
           "kc artifact apply --file knowledge/wiki/ownership.md --dry-run"
         ],
         "common_errors": [
+          "KC_FILE_NOT_FOUND",
           "KC_APPLY_NOT_VALIDATED",
           "KC_PLAN_PRECONDITION_FAILED",
           "KC_LOCK_HELD"
@@ -323,6 +330,7 @@
         "exit_codes": [
           0,
           10,
+          11,
           13,
           60
         ]
@@ -342,11 +350,13 @@
           "kc citation check --file knowledge/wiki/ownership.md"
         ],
         "common_errors": [
+          "KC_USAGE_ERROR",
           "KC_CITATION_INVALID_TOKEN",
           "KC_CITATION_RANGE_MISSING"
         ],
         "exit_codes": [
           0,
+          2,
           20
         ]
       },
@@ -364,6 +374,7 @@
           "kc --format markdown lint"
         ],
         "common_errors": [
+          "KC_VALIDATION_INVALID_ARGUMENT",
           "KC_SOURCE_STALE",
           "KC_ARTIFACT_SCHEMA_INVALID"
         ],
@@ -468,7 +479,7 @@
         "command_id": "eval.run",
         "mutates": false,
         "confirmation": "none",
-        "syntax": "kc eval run [--pack FILE]",
+        "syntax": "kc eval run --pack FILE",
         "important_options": [
           "--pack"
         ],
@@ -477,6 +488,7 @@
           "kc eval run --pack knowledge/evals/basic.yaml"
         ],
         "common_errors": [
+          "KC_USAGE_ERROR",
           "KC_INDEX_BUILD_FAILED",
           "KC_FILE_NOT_FOUND",
           "KC_CONFIG_INVALID",
@@ -484,6 +496,7 @@
         ],
         "exit_codes": [
           0,
+          2,
           10,
           11,
           30
@@ -498,13 +511,13 @@
           "--format",
           "--out"
         ],
-        "result_summary": "Export format, byte count, output path, or inline content.",
+        "result_summary": "Export format, byte count, output path, content location, or inline content.",
         "examples": [
           "kc export --format llms-txt",
           "kc export --format markdown-bundle --out knowledge/exports/bundle.md"
         ],
         "common_errors": [
-          "KC_UNSUPPORTED_FEATURE",
+          "KC_VALIDATION_INVALID_ARGUMENT",
           "KC_PATH_OUTSIDE_REPO"
         ],
         "exit_codes": [

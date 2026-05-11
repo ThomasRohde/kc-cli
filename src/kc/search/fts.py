@@ -13,6 +13,7 @@ import orjson
 from kc.errors import KcError
 from kc.models.source import SourceRecord
 from kc.models.source_range import SourceRangeRecord
+from kc.paths import ensure_data_dir_exists
 from kc.search.semantic import assert_semantic_index_ready, semantic_rankings
 from kc.store.jsonl import read_jsonl
 from kc.store.sqlite import index_status, init_db, rebuild_index
@@ -36,6 +37,7 @@ class CombinedRank:
 
 
 def ensure_index(db_path: Path, sources_path: Path, ranges_path: Path) -> None:
+    ensure_data_dir_exists()
     sources = read_jsonl(sources_path, SourceRecord)
     ranges = read_jsonl(ranges_path, SourceRangeRecord)
     status = index_status(db_path, sources, ranges)

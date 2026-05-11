@@ -36,6 +36,11 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
             "task_wait_state": True,
         },
         "retrieval_models": {
+            "bm25": {
+                "provider": "sqlite_fts5",
+                "score": "SQLite FTS5 bm25(); lower scores rank better and scores may be negative.",
+                "purpose": "ranking_only",
+            },
             "semantic": {
                 "provider": "model2vec",
                 "model": "potion-base-8M",
@@ -89,6 +94,7 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
                 "shape": "deterministic command-specific markdown",
             },
             "llm_mode": "LLM=true always forces json output, quiet mode, no prompts, and no ANSI.",
+            "usage_errors": "Command-line usage errors are returned as kc.result.v1 envelopes with KC_USAGE_ERROR and process exit 2.",
         },
         "environment": {
             "LLM=true": "forces JSON, quiet/no ANSI/no prompts, and blocks unsafe validation skips",
@@ -109,7 +115,11 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
                 "[kc:src_<id>:CSV:R<start>-R<end>]",
             ],
             "json_artifacts": "Use structured citations: [{\"source_id\":\"src_...\",\"range_id\":\"rng_...\"}]",
-            "markers": ["[kc:inference]", "[kc:todo]", "[kc:uncited]"],
+            "markers": {
+                "[kc:inference]": "marks explicit synthesis or inference",
+                "[kc:todo]": "marks unresolved work and is valid only while artifact status is draft",
+                "[kc:uncited]": "marks intentionally uncited content and fails unless --allow-uncited is used",
+            },
             "rule": "[kc:uncited] fails unless explicitly allowed; [kc:todo] is draft-only.",
         },
         "workflows": {
@@ -158,6 +168,7 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
             for code, exit_code in sorted(ERROR_EXIT_MAP.items())
         },
         "exit_codes": {
+            "2": "Usage error",
             "0": "Success",
             "10": "Validation error",
             "11": "Not found",
@@ -186,6 +197,7 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
         },
         "error_codes": full["error_codes"],
         "exit_codes": full["exit_codes"],
+        "process_exit_code": "When multiple errors are present, the process exits with the maximum error exit_code in the envelope.",
     }
     full["examples"] = {
         "json_contract": "kc --format json guide --section commands",
@@ -253,7 +265,7 @@ def _commands() -> dict[str, Any]:
             important_options=["--profile", "--dry-run", "--yes"],
             result_summary="Planned, created, and existing repository layout paths.",
             examples=["kc init --dry-run", "kc init --yes"],
-            common_errors=["KC_PATH_OUTSIDE_REPO", "KC_CONFIG_INVALID"],
+            common_errors=["KC_VALIDATION_INVALID_ARGUMENT", "KC_PATH_OUTSIDE_REPO", "KC_CONFIG_INVALID"],
             exit_codes=[0, 10],
         ),
         "source.add": _command(
@@ -293,8 +305,8 @@ def _commands() -> dict[str, Any]:
             important_options=["--domain", "--limit", "--mode"],
             result_summary="Ranked source ranges with citation tokens and retrieval scores.",
             examples=["kc source search 'ownership lifecycle' --domain policy"],
-            common_errors=["KC_INDEX_BUILD_FAILED", "KC_RETRIEVAL_MODEL_UNAVAILABLE"],
-            exit_codes=[0, 30, 31],
+            common_errors=["KC_VALIDATION_INVALID_ARGUMENT", "KC_INDEX_BUILD_FAILED", "KC_RETRIEVAL_MODEL_UNAVAILABLE"],
+            exit_codes=[0, 10, 30, 31],
         ),
         "index.build": _command(
             "kc index build [--semantic] [--dry-run]",
@@ -303,8 +315,8 @@ def _commands() -> dict[str, Any]:
             important_options=["--semantic", "--clean", "--dry-run"],
             result_summary="SQLite/BM25 rebuild status and optional semantic index metadata.",
             examples=["kc index build", "kc index build --semantic"],
-            common_errors=["KC_INDEX_BUILD_FAILED", "KC_RETRIEVAL_MODEL_UNAVAILABLE"],
-            exit_codes=[0, 30, 31],
+            common_errors=["KC_VALIDATION_INVALID_ARGUMENT", "KC_INDEX_BUILD_FAILED", "KC_RETRIEVAL_MODEL_UNAVAILABLE"],
+            exit_codes=[0, 10, 30, 31],
         ),
         "context.prepare": _command(
             "kc context prepare --ask ASK --shape SHAPE [--mode bm25|semantic|hybrid]",
@@ -323,7 +335,7 @@ def _commands() -> dict[str, Any]:
             important_options=["--path", "--title", "--type", "--domain", "--source-id", "--status", "--dry-run", "--yes"],
             result_summary="Deterministic artifact skeleton metadata and preview content on dry run.",
             examples=["kc artifact new --type knowledge_page --path knowledge/wiki/ownership.md --title Ownership --dry-run"],
-            common_errors=["KC_FILE_EXISTS", "KC_PATH_OUTSIDE_REPO"],
+            common_errors=["KC_VALIDATION_INVALID_ARGUMENT", "KC_FILE_EXISTS", "KC_PATH_OUTSIDE_REPO"],
             exit_codes=[0, 10, 12],
         ),
         "artifact.validate": _command(
@@ -353,8 +365,8 @@ def _commands() -> dict[str, Any]:
             important_options=["--file", "--plan", "--dry-run", "--yes", "--skip-validate", "--idempotency-key"],
             result_summary="Apply plan, validation result, artifact record, citation edge count, and snapshot.",
             examples=["kc artifact apply --file knowledge/wiki/ownership.md --dry-run"],
-            common_errors=["KC_APPLY_NOT_VALIDATED", "KC_PLAN_PRECONDITION_FAILED", "KC_LOCK_HELD"],
-            exit_codes=[0, 10, 13, 60],
+            common_errors=["KC_FILE_NOT_FOUND", "KC_APPLY_NOT_VALIDATED", "KC_PLAN_PRECONDITION_FAILED", "KC_LOCK_HELD"],
+            exit_codes=[0, 10, 11, 13, 60],
         ),
         "citation.check": _command(
             "kc citation check --file PATH|--all",
@@ -363,8 +375,8 @@ def _commands() -> dict[str, Any]:
             important_options=["--file", "--all", "--fail-on-warning"],
             result_summary="Citation edge validity and provenance problems for selected artifacts.",
             examples=["kc citation check --file knowledge/wiki/ownership.md"],
-            common_errors=["KC_CITATION_INVALID_TOKEN", "KC_CITATION_RANGE_MISSING"],
-            exit_codes=[0, 20],
+            common_errors=["KC_USAGE_ERROR", "KC_CITATION_INVALID_TOKEN", "KC_CITATION_RANGE_MISSING"],
+            exit_codes=[0, 2, 20],
         ),
         "lint": _command(
             "kc lint [--checks citations,stale,orphans,duplicates,index,log|all]",
@@ -373,7 +385,7 @@ def _commands() -> dict[str, Any]:
             important_options=["--checks"],
             result_summary="Repository integrity status, enabled checks, counts, and issues.",
             examples=["kc lint", "kc --format markdown lint"],
-            common_errors=["KC_SOURCE_STALE", "KC_ARTIFACT_SCHEMA_INVALID"],
+            common_errors=["KC_VALIDATION_INVALID_ARGUMENT", "KC_SOURCE_STALE", "KC_ARTIFACT_SCHEMA_INVALID"],
             exit_codes=[0, 10, 20],
         ),
         "task.start": _command(
@@ -417,23 +429,29 @@ def _commands() -> dict[str, Any]:
             exit_codes=[0, 10, 11, 13],
         ),
         "eval.run": _command(
-            "kc eval run [--pack FILE]",
+            "kc eval run --pack FILE",
             mutates=False,
             confirmation="none",
             important_options=["--pack"],
             result_summary="Retrieval eval case totals, pass count, and case results.",
             examples=["kc eval run --pack knowledge/evals/basic.yaml"],
-            common_errors=["KC_INDEX_BUILD_FAILED", "KC_FILE_NOT_FOUND", "KC_CONFIG_INVALID", "KC_ARTIFACT_SCHEMA_INVALID"],
-            exit_codes=[0, 10, 11, 30],
+            common_errors=[
+                "KC_USAGE_ERROR",
+                "KC_INDEX_BUILD_FAILED",
+                "KC_FILE_NOT_FOUND",
+                "KC_CONFIG_INVALID",
+                "KC_ARTIFACT_SCHEMA_INVALID",
+            ],
+            exit_codes=[0, 2, 10, 11, 30],
         ),
         "export": _command(
             "kc export --format jsonl|markdown-bundle|llms-txt [--out FILE]",
             mutates=True,
             confirmation="writes --out when provided; no --yes required",
             important_options=["--format", "--out"],
-            result_summary="Export format, byte count, output path, or inline content.",
+            result_summary="Export format, byte count, output path, content location, or inline content.",
             examples=["kc export --format llms-txt", "kc export --format markdown-bundle --out knowledge/exports/bundle.md"],
-            common_errors=["KC_UNSUPPORTED_FEATURE", "KC_PATH_OUTSIDE_REPO"],
+            common_errors=["KC_VALIDATION_INVALID_ARGUMENT", "KC_PATH_OUTSIDE_REPO"],
             exit_codes=[0, 10, 80],
         ),
         "doctor": _command(

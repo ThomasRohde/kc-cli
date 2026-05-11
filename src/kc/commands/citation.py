@@ -34,7 +34,7 @@ def check(
             )
         if not files:
             raise KcError(
-                code="KC_ARTIFACT_NOT_FOUND",
+                code="KC_USAGE_ERROR",
                 message="Provide --file or --all.",
             )
         results = []

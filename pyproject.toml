@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "kc-cli"
 dynamic = ["version"]
 description = "Deterministic knowledge compiler harness for external agents"
-readme = "kc-design-v1.md"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 authors = [

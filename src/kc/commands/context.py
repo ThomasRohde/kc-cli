@@ -4,41 +4,27 @@ from typing import Annotated
 
 import typer
 
-from kc.commands.common import load_artifacts, load_ranges, run
+from kc.commands.common import (
+    load_artifacts,
+    load_ranges,
+    load_sources,
+    parse_named_ints,
+    run,
+    stale_source_warnings,
+    validate_choice,
+)
 from kc.config import load_config
-from kc.errors import KcError
 from kc.output import emit_success, warning
 from kc.paths import current_paths
 from kc.search.fts import ensure_index, search_ranges
 
 app = typer.Typer(help="Prepare grounded source context for an external agent.")
+ALLOWED_GROUNDING = {"required", "optional"}
+ALLOWED_RETRIEVAL_MODES = {"bm25", "semantic", "hybrid"}
 
 
 def _parse_budget(raw: str | None) -> dict[str, int]:
-    if not raw:
-        return {"max_sources": 12, "max_ranges": 40}
-    parsed = {"max_sources": 12, "max_ranges": 40}
-    for part in raw.split(","):
-        if not part.strip() or "=" not in part:
-            continue
-        key, value = part.split("=", 1)
-        if key.strip() in parsed:
-            try:
-                parsed[key.strip()] = int(value.strip())
-            except ValueError as exc:
-                raise KcError(
-                    code="KC_CONFIG_INVALID",
-                    message=f"Invalid context budget value: {part}",
-                    details={"budget": raw},
-                ) from exc
-    for key, value in parsed.items():
-        if value < 1:
-            raise KcError(
-                code="KC_CONFIG_INVALID",
-                message=f"Context budget must be positive: {key}={value}",
-                details={"budget": raw, "key": key, "value": value},
-            )
-    return parsed
+    return parse_named_ints(raw, option="--budget", defaults={"max_sources": 12, "max_ranges": 40})
 
 
 @app.command("prepare", help="Search sources and emit evidence, policies, and next commands without answering.")
@@ -50,7 +36,7 @@ def prepare(
     domain: Annotated[str | None, typer.Option("--domain", help="Domain filter.")] = None,
     target: Annotated[str | None, typer.Option("--target", help="Target artifact path.")] = None,
     grounding: Annotated[
-        str, typer.Option("--grounding", help="required or optional.")
+        str, typer.Option("--grounding", help="Grounding policy: required or optional.")
     ] = "required",
     budget: Annotated[
         str | None, typer.Option("--budget", help="max_sources=N,max_ranges=N")
@@ -61,20 +47,11 @@ def prepare(
 ) -> None:
     def _run() -> None:
         paths = current_paths()
-        if grounding not in {"required", "optional"}:
-            raise KcError(
-                code="KC_CONFIG_INVALID",
-                message=f"Unsupported grounding policy: {grounding}",
-                details={"grounding": grounding, "supported": ["required", "optional"]},
-            )
-        if mode not in {"bm25", "semantic", "hybrid"}:
-            raise KcError(
-                code="KC_RETRIEVAL_MODEL_UNAVAILABLE",
-                message=f"Unsupported retrieval mode: {mode}",
-                details={"mode": mode, "supported": ["bm25", "semantic", "hybrid"]},
-            )
+        validate_choice(grounding, option="--grounding", supported=ALLOWED_GROUNDING)
+        validate_choice(mode, option="--mode", supported=ALLOWED_RETRIEVAL_MODES)
         limits = _parse_budget(budget)
         ensure_index(paths.sqlite_path, paths.sources_jsonl, paths.ranges_jsonl)
+        sources = load_sources()
         candidate_ranges = search_ranges(
             paths.sqlite_path,
             ask,
@@ -119,6 +96,7 @@ def prepare(
             {
                 "search_query": ask,
                 "mode": mode,
+                "budget": limits,
                 "candidate_ranges": filtered,
                 "existing_artifacts": existing,
                 "required_output_shape": shape,
@@ -149,8 +127,8 @@ def prepare(
                     f"kc artifact apply --file {target or '<artifact>'} --yes",
                 ],
             },
-            target={"ask": ask, "shape": shape, "target": target, "mode": mode},
-            warnings=warnings,
+            target={"ask": ask, "shape": shape, "target": target, "mode": mode, "budget": limits},
+            warnings=[*warnings, *stale_source_warnings(filtered, sources)],
         )
 
     run("context.prepare", _run)

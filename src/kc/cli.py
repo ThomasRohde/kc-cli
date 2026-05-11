@@ -2,13 +2,77 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+import sys
+from typing import Annotated, Any
 
 import click
 import typer
 from typer.core import TyperGroup
 
-from kc.output import init_request, is_interactive, is_llm_mode, state
+from kc.errors import KcError
+from kc.output import emit_error, init_request, is_interactive, is_llm_mode, state
+
+
+def _value_after(args: list[str], option: str) -> str | None:
+    for idx, item in enumerate(args):
+        if item == option and idx + 1 < len(args):
+            return args[idx + 1]
+        if item.startswith(f"{option}="):
+            return item.split("=", 1)[1]
+    return None
+
+
+def _initialize_error_state(args: list[str]) -> None:
+    if not state.request_id:
+        init_request(_value_after(args, "--request-id"))
+    requested_format = _value_after(args, "--format") or _value_after(args, "-f")
+    state.format = requested_format if requested_format in {"json", "table", "markdown"} else "json"
+    if is_llm_mode():
+        state.format = "json"
+    state.quiet = True
+
+
+def _command_id_from_args(args: list[str]) -> str:
+    value_opts = {"--format", "-f", "--data-dir", "--state-dir", "--request-id"}
+    top_level = {
+        "guide",
+        "conformance",
+        "init",
+        "lint",
+        "export",
+        "source",
+        "index",
+        "context",
+        "artifact",
+        "citation",
+        "task",
+        "eval",
+        "doctor",
+    }
+    tokens: list[str] = []
+    index = 0
+    while index < len(args):
+        item = args[index]
+        if item in value_opts:
+            index += 2
+            continue
+        if any(item.startswith(f"{opt}=") for opt in value_opts):
+            index += 1
+            continue
+        if item.startswith("-"):
+            index += 1
+            continue
+        tokens.append(item)
+        if len(tokens) == 2:
+            break
+        index += 1
+    if not tokens or tokens[0] not in top_level:
+        return "kc"
+    if tokens[0] in {"source", "index", "context", "artifact", "citation", "task", "eval"} and len(tokens) > 1:
+        return f"{tokens[0]}.{tokens[1]}"
+    if tokens[0] == "doctor" and len(tokens) > 1:
+        return f"doctor.{tokens[1]}"
+    return tokens[0]
 
 
 class FlexibleGroup(TyperGroup):
@@ -17,6 +81,39 @@ class FlexibleGroup(TyperGroup):
     _VALUE_OPTS = frozenset(("--format", "-f", "--data-dir", "--state-dir", "--request-id"))
     _FLAG_OPTS = frozenset(("--quiet", "-q", "--no-input", "--version", "-V"))
     _VALUE_PREFIXES = ("--format=", "--data-dir=", "--state-dir=", "--request-id=")
+
+    def main(
+        self,
+        args: list[str] | None = None,
+        prog_name: str | None = None,
+        complete_var: str | None = None,
+        standalone_mode: bool = True,
+        **extra: Any,
+    ) -> object:
+        raw_args = list(sys.argv[1:] if args is None else args)
+        try:
+            result = super().main(
+                args=raw_args,
+                prog_name=prog_name,
+                complete_var=complete_var,
+                standalone_mode=False,
+                **extra,
+            )
+            if standalone_mode:
+                raise SystemExit(result if isinstance(result, int) else 0)
+            return result
+        except click.UsageError as exc:
+            if not standalone_mode:
+                raise
+            _initialize_error_state(raw_args)
+            emit_error(
+                _command_id_from_args(raw_args),
+                KcError(
+                    code="KC_USAGE_ERROR",
+                    message=exc.format_message(),
+                    details={"usage": exc.format_message()},
+                ),
+            )
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
         cmd_idx: int | None = None
@@ -105,7 +202,7 @@ def _version_callback(value: bool) -> None:
 def main(
     format: Annotated[
         str,
-        typer.Option("--format", "-f", help="Output format: json, table, markdown."),
+        typer.Option("--format", "-f", help="Output format: json, table, or markdown."),
     ] = "json",
     data_dir: Annotated[
         str, typer.Option("--data-dir", help="Knowledge data directory.")
@@ -144,7 +241,7 @@ def main(
         emit_error(
             "kc",
             KcError(
-                code="KC_UNSUPPORTED_FEATURE",
+                code="KC_VALIDATION_INVALID_ARGUMENT",
                 message=f"Unknown output format: {format}",
                 details={"requested": format, "supported": ["json", "table", "markdown"]},
             ),

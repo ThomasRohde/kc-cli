@@ -7,7 +7,14 @@ from typing import Annotated
 import typer
 
 from kc.commands.artifact import validate_artifact_file
-from kc.commands.common import load_artifacts, load_citation_edges, load_ranges, load_sources, run
+from kc.commands.common import (
+    load_artifacts,
+    load_citation_edges,
+    load_ranges,
+    load_sources,
+    parse_checks,
+    run,
+)
 from kc.errors import EXIT_VALIDATION, KcError
 from kc.fingerprints import raw_fingerprint
 from kc.output import emit, emit_success, envelope
@@ -15,6 +22,8 @@ from kc.paths import current_paths
 from kc.store.sqlite import index_status
 
 LOG_REF_RE = re.compile(r"\b(?P<kind>plan|task)_[A-Z0-9]+\b")
+DEFAULT_CHECKS = {"citations", "stale", "orphans"}
+ALLOWED_CHECKS = {"citations", "stale", "orphans", "duplicates", "index", "log"}
 
 
 def register(app: typer.Typer) -> None:
@@ -26,9 +35,7 @@ def register(app: typer.Typer) -> None:
         ] = "citations,stale,orphans",
     ) -> None:
         def _run() -> None:
-            enabled = {part.strip() for part in checks.split(",") if part.strip()}
-            if "all" in enabled:
-                enabled = {"citations", "stale", "orphans", "duplicates", "index", "log"}
+            enabled = parse_checks(checks, allowed=ALLOWED_CHECKS, all_checks=ALLOWED_CHECKS)
             issues: list[dict] = []
             paths = current_paths()
             sources = load_sources()

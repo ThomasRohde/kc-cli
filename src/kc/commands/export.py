@@ -6,7 +6,14 @@ from typing import Annotated
 import typer
 
 from kc.atomic_write import atomic_write_text
-from kc.commands.common import load_artifacts, load_citation_edges, load_ranges, load_sources, run
+from kc.commands.common import (
+    load_artifacts,
+    load_citation_edges,
+    load_ranges,
+    load_sources,
+    run,
+    validate_choice,
+)
 from kc.errors import KcError
 from kc.output import emit_success
 from kc.paths import ensure_under_root, repo_relative
@@ -22,6 +29,11 @@ def register(app: typer.Typer) -> None:
         out: Annotated[Path | None, typer.Option("--out", help="Optional output file.")] = None,
     ) -> None:
         def _run() -> None:
+            validate_choice(
+                export_format,
+                option="--format",
+                supported={"jsonl", "markdown-bundle", "llms-txt"},
+            )
             if export_format == "jsonl":
                 content = _jsonl_export()
             elif export_format == "markdown-bundle":
@@ -43,6 +55,7 @@ def register(app: typer.Typer) -> None:
                     "format": export_format,
                     "bytes": len(content.encode("utf-8")),
                     "out": repo_relative(target) if out else None,
+                    "content_location": "file" if out else "inline",
                     "content": None if out else content,
                 },
             )

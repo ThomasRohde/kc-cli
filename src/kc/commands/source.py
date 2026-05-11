@@ -15,6 +15,9 @@ from kc.commands.common import (
     run,
     save_ranges,
     save_sources,
+    stale_source_warnings,
+    validate_choice,
+    validate_positive_int,
 )
 from kc.config import load_config
 from kc.errors import KcError
@@ -30,6 +33,7 @@ from kc.search.semantic import build_semantic_index, semantic_index_status
 from kc.store.sqlite import rebuild_index
 
 app = typer.Typer(help="Register, inspect, index, and search local source material.")
+ALLOWED_RETRIEVAL_MODES = {"bm25", "semantic", "hybrid"}
 
 
 def _resolve_source(identifier: str) -> tuple[SourceRecord, Path]:
@@ -109,14 +113,14 @@ def add(
             raise KcError(
                 code="KC_FILE_NOT_FOUND",
                 message=f"Source file not found: {file}",
-                details={"path": file},
+                details={"path": repo_relative(source_path)},
             )
         media_type = guess_media_type(source_path)
         if not is_text_like(source_path, media_type):
             raise KcError(
                 code="KC_SOURCE_UNSUPPORTED_MEDIA_TYPE",
                 message=f"Unsupported media type for v1 extraction: {media_type}",
-                details={"path": file, "media_type": media_type},
+                details={"path": repo_relative(source_path), "media_type": media_type},
             )
         rel = repo_relative(source_path)
         uri = f"file:{rel}"
@@ -127,6 +131,7 @@ def add(
                     code="KC_SOURCE_ALREADY_REGISTERED",
                     message=f"Source already registered: {uri}",
                     details={"source_id": existing.source_id, "uri": uri},
+                    suggested_action=f"refresh existing source with kc source refresh {existing.source_id} --dry-run",
                 )
         raw_fp = raw_fingerprint(source_path)
         norm_fp = normalized_fingerprint(source_path)
@@ -162,6 +167,21 @@ def add(
             rebuild_index(paths.sqlite_path, load_sources(), all_ranges)
             if load_config().semantic_enabled:
                 build_semantic_index(paths.sqlite_path, all_ranges)
+        warnings = [
+            warning(
+                "KC_AUTHORITY_UNKNOWN",
+                "Source authority was not provided; artifacts based on this source should remain draft.",
+                {"source_id": source.source_id},
+            )
+        ]
+        if not ranges:
+            warnings.append(
+                warning(
+                    "KC_SOURCE_NO_RANGES",
+                    "Source registered with no extractable ranges.",
+                    {"source_id": source.source_id, "path": rel},
+                )
+            )
         emit_success(
             "source.add",
             {
@@ -176,13 +196,7 @@ def add(
                 "copied_to": copied_to,
                 "authority": source.authority.model_dump(mode="json"),
             },
-            warnings=[
-                warning(
-                    "KC_AUTHORITY_UNKNOWN",
-                    "Source authority was not provided; artifacts based on this source should remain draft.",
-                    {"source_id": source.source_id},
-                )
-            ],
+            warnings=warnings,
         )
 
     run("source.add", _run)
@@ -318,21 +332,18 @@ def refresh(
 def search(
     query: Annotated[str, typer.Argument(help="Search query.")],
     domain: Annotated[str | None, typer.Option("--domain", help="Domain filter.")] = None,
-    limit: Annotated[int, typer.Option("--limit", help="Maximum results.")] = 10,
-    mode: Annotated[str, typer.Option("--mode", help="bm25, semantic, or hybrid.")] = "bm25",
+    limit: Annotated[int, typer.Option("--limit", help="Maximum results; must be positive.")] = 10,
+    mode: Annotated[str, typer.Option("--mode", help="Retrieval mode: bm25, semantic, or hybrid.")] = "bm25",
 ) -> None:
     def _run() -> None:
-        if mode not in {"bm25", "semantic", "hybrid"}:
-            raise KcError(
-                code="KC_RETRIEVAL_MODEL_UNAVAILABLE",
-                message=f"Unsupported retrieval mode: {mode}",
-                details={"mode": mode},
-            )
+        validate_choice(mode, option="--mode", supported=ALLOWED_RETRIEVAL_MODES)
+        validate_positive_int(limit, option="--limit")
         paths = current_paths()
         from kc.search.fts import ensure_index, search_ranges
 
         ensure_index(paths.sqlite_path, paths.sources_jsonl, paths.ranges_jsonl)
         config = load_config()
+        sources = load_sources()
         results = search_ranges(
             paths.sqlite_path,
             query,
@@ -345,7 +356,8 @@ def search(
         emit_success(
             "source.search",
             {"query": query, "mode": mode, "total": len(results), "results": results},
-            target={"query": query, "domain": domain},
+            target={"query": query, "domain": domain, "limit": limit, "mode": mode},
+            warnings=stale_source_warnings(results, sources),
         )
 
     run("source.search", _run)

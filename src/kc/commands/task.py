@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 
 from kc.atomic_write import atomic_write_text
-from kc.commands.common import json_dumps, parse_input_json, run
+from kc.commands.common import json_dumps, parse_input_json, run, validate_payload_schema
 from kc.config import load_config
 from kc.errors import KcError
 from kc.ids import new_id
@@ -160,6 +160,7 @@ def resume(
                 message=f"Expected event {task.expected_event_name}, got {event}",
             )
         payload = parse_input_json(input_data)
+        validate_payload_schema(payload, task.expected_event_schema)
         task.events.append({"event": event, "input": payload, "received_at": _now()})
         task.status = "completed"
         task.updated_at = _now()

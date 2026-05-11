@@ -31,6 +31,7 @@ from kc.commands.common import (
     run,
     save_artifacts,
     save_citation_edges,
+    validate_choice,
 )
 from kc.config import load_config
 from kc.errors import EXIT_PROVENANCE, EXIT_VALIDATION, KcError
@@ -40,7 +41,7 @@ from kc.locks import FileLock
 from kc.models.artifact import ArtifactRecord, SourceRef
 from kc.models.citation import ArtifactLocator, CitationEdgeRecord
 from kc.models.plan import PlanRecord
-from kc.output import emit, emit_success, envelope, is_llm_mode
+from kc.output import emit, emit_success, envelope, is_llm_mode, warning
 from kc.paths import current_paths, ensure_under_root, repo_relative
 from kc.provenance.citations import validate_citations
 from kc.store.sqlite import get_idempotency, rebuild_index, save_idempotency, save_plan
@@ -56,6 +57,7 @@ ALLOWED_ARTIFACT_TYPES = {
     "eval_pack",
 }
 ALLOWED_ARTIFACT_STATUSES = {"draft", "active", "deprecated", "superseded"}
+ALLOWED_NEW_ARTIFACT_STATUSES = {"draft", "active"}
 REQUIRED_MARKDOWN_FRONTMATTER = {
     "schema_version",
     "artifact_id",
@@ -122,23 +124,31 @@ def _artifact_template(
 def new(
     path: Annotated[Path, typer.Option("--path", help="Artifact path.")],
     title: Annotated[str, typer.Option("--title", help="Artifact title.")],
-    artifact_type: Annotated[str, typer.Option("--type", help="Artifact type.")] = "knowledge_page",
+    artifact_type: Annotated[
+        str,
+        typer.Option(
+            "--type",
+            help="Artifact type: knowledge_page, glossary, decision_note, source_index, log_entry, eval_pack.",
+        ),
+    ] = "knowledge_page",
     domain: Annotated[list[str] | None, typer.Option("--domain", help="Domain tag.")] = None,
     source_id: Annotated[
         list[str] | None, typer.Option("--source-id", help="Source reference.")
     ] = None,
-    status: Annotated[str, typer.Option("--status", help="draft or active.")] = "draft",
+    status: Annotated[str, typer.Option("--status", help="Artifact status: draft or active.")] = "draft",
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without writing.")] = False,
     yes: Annotated[bool, typer.Option("--yes", help="Write skeleton.")] = False,
 ) -> None:
     def _run() -> None:
         target = ensure_under_root((Path.cwd() / path).resolve())
+        validate_choice(artifact_type, option="--type", supported=ALLOWED_ARTIFACT_TYPES)
+        validate_choice(status, option="--status", supported=ALLOWED_NEW_ARTIFACT_STATUSES)
         effective_dry_run = dry_run or not yes
         if target.exists() and not effective_dry_run:
             raise KcError(
                 code="KC_FILE_EXISTS",
                 message=f"Artifact already exists: {path}",
-                details={"path": str(path)},
+                details={"path": repo_relative(target)},
             )
         artifact_id = new_id("art")
         content = _artifact_template(
@@ -160,7 +170,7 @@ def new(
                 "bytes": len(content.encode("utf-8")),
                 "content_preview": content if effective_dry_run else None,
             },
-            target={"path": str(path), "artifact_type": artifact_type},
+            target={"path": repo_relative(target), "artifact_type": artifact_type},
         )
 
     run("artifact.new", _run)
@@ -175,13 +185,14 @@ def validate_artifact_file(
     paths = current_paths()
     target = ensure_under_root((Path.cwd() / file).resolve())
     if not target.exists():
-        raise KcError(
-            code="KC_ARTIFACT_NOT_FOUND",
-            message=f"Artifact not found: {file}",
-            details={"path": str(file)},
-        )
+            raise KcError(
+                code="KC_ARTIFACT_NOT_FOUND",
+                message=f"Artifact not found: {file}",
+                details={"path": repo_relative(target)},
+            )
     checks: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
     edges: list[CitationEdgeRecord] = []
     frontmatter: dict[str, Any] = {}
     body = ""
@@ -267,6 +278,14 @@ def validate_artifact_file(
                 line_offset=markdown_body_line_offset(text),
             )
         )
+        if status == "draft" and "[kc:todo]" in body:
+            warnings.append(
+                warning(
+                    "KC_ARTIFACT_TODO_MARKERS",
+                    "[kc:todo] markers are valid only while the artifact remains draft.",
+                    {"path": repo_relative(target), "status": status},
+                )
+            )
         edges, citation_problems = validate_citations(
             repo_relative(target),
             text,
@@ -359,6 +378,7 @@ def validate_artifact_file(
         "frontmatter": frontmatter,
         "checks": checks,
         "errors": errors,
+        "warnings": warnings,
         "citation_edges": [edge.model_dump(mode="json") for edge in edges],
         "text": text,
         "body": body,
@@ -556,7 +576,7 @@ def validate(
     file: Annotated[Path, typer.Option("--file", help="Artifact file.")],
     schema: Annotated[str | None, typer.Option("--schema", help="Schema override.")] = None,
     allow_uncited: Annotated[
-        bool, typer.Option("--allow-uncited", help="Allow [kc:uncited].")
+        bool, typer.Option("--allow-uncited", help="Allow kc:uncited markers for uncited paragraphs.")
     ] = False,
 ) -> None:
     def _run() -> None:
@@ -583,7 +603,8 @@ def validate(
                     "artifact.validate",
                     None,
                     ok=False,
-                    target={"file": str(file)},
+                    target={"file": result["path"]},
+                    warnings=result.get("warnings", []),
                     errors=errors,
                 ),
                 exit_code=exit_code,
@@ -591,7 +612,8 @@ def validate(
         emit_success(
             "artifact.validate",
             {k: v for k, v in result.items() if k not in {"text", "body"}},
-            target={"file": str(file)},
+            target={"file": result["path"]},
+            warnings=result.get("warnings", []),
         )
 
     run("artifact.validate", _run)
@@ -600,15 +622,16 @@ def validate(
 @app.command("diff", help="Build a structured apply plan and show artifact changes before mutation.")
 def diff(
     file: Annotated[Path, typer.Option("--file", help="Artifact file.")],
-    against: Annotated[str | None, typer.Option("--against", help="Comparison baseline.")] = None,
+    against: Annotated[str | None, typer.Option("--against", help="Comparison baseline: registry or HEAD.")] = None,
 ) -> None:
     def _run() -> None:
         target = ensure_under_root((Path.cwd() / file).resolve())
-        if against not in {None, "registry", "HEAD"}:
+        validate_choice(against, option="--against", supported={"registry", "HEAD"}, allow_none=True)
+        if not target.exists():
             raise KcError(
-                code="KC_UNSUPPORTED_FEATURE",
-                message="Only registry/HEAD labels are accepted for --against in v1.",
-                details={"against": against},
+                code="KC_ARTIFACT_NOT_FOUND",
+                message=f"Artifact not found: {file}",
+                details={"path": repo_relative(target)},
             )
         existing = artifact_by_path(target)
         plan, diff_text = build_artifact_plan(
@@ -636,7 +659,8 @@ def diff(
                 "diff_path": None,
                 "risk_flags": plan.risk_flags,
             },
-            target={"file": str(file), "against": against or "registry"},
+            target={"file": repo_relative(target), "against": against or "registry"},
+            warnings=validation.get("warnings", []) if "validation" in locals() else [],
         )
 
     run("artifact.diff", _run)
@@ -778,6 +802,12 @@ def _target_from_plan_path(path: str) -> Path:
 
 def _load_plan_file(plan_file: Path) -> PlanRecord:
     plan_path = ensure_under_root((Path.cwd() / plan_file).resolve())
+    if not plan_path.exists():
+        raise KcError(
+            code="KC_FILE_NOT_FOUND",
+            message=f"Plan file not found: {plan_file}",
+            details={"path": repo_relative(plan_path)},
+        )
     try:
         data = orjson.loads(plan_path.read_bytes())
     except orjson.JSONDecodeError as exc:
@@ -989,6 +1019,7 @@ def apply(
                 "fingerprint": raw_fingerprint(target),
                 "frontmatter": {},
                 "citation_edges": [],
+                "warnings": [],
                 "text": target.read_text(encoding="utf-8-sig"),
                 "body": "",
             }
@@ -1035,6 +1066,7 @@ def apply(
                     },
                 },
                 target={"file": repo_relative(target)},
+                warnings=validation.get("warnings", []),
             )
 
         with FileLock(
@@ -1107,7 +1139,12 @@ def apply(
             }
             if idempotency_key:
                 save_idempotency(paths.sqlite_path, idempotency_key, plan.plan_id, result)
-            emit_success("artifact.apply", result, target={"file": repo_relative(target)})
+            emit_success(
+                "artifact.apply",
+                result,
+                target={"file": repo_relative(target)},
+                warnings=validation.get("warnings", []),
+            )
 
     run("artifact.apply", _run)
 

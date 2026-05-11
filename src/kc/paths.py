@@ -73,6 +73,17 @@ def current_paths() -> KcPaths:
     )
 
 
+def ensure_data_dir_exists() -> KcPaths:
+    paths = current_paths()
+    if not paths.data_dir.exists():
+        raise KcError(
+            code="KC_CONFIG_NOT_FOUND",
+            message=f"Knowledge data directory not found: {repo_relative(paths.data_dir)}",
+            details={"data_dir": repo_relative(paths.data_dir)},
+        )
+    return paths
+
+
 def ensure_under_root(path: Path, root: Path | None = None) -> Path:
     root = root or Path.cwd().resolve()
     resolved = path.resolve()

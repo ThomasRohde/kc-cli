@@ -21,24 +21,29 @@ def run_eval(
 ) -> None:
     def _run() -> None:
         paths = current_paths()
-        ensure_index(paths.sqlite_path, paths.sources_jsonl, paths.ranges_jsonl)
         cases: list[dict[str, Any]] = []
         pack_path = ensure_under_root((Path.cwd() / pack).resolve()) if pack else None
-        if pack_path:
-            if not pack_path.exists():
-                raise KcError(
-                    code="KC_FILE_NOT_FOUND",
-                    message=f"Eval pack not found: {repo_relative(pack_path)}",
-                    details={"path": repo_relative(pack_path)},
-                )
-            data = yaml.safe_load(pack_path.read_text(encoding="utf-8")) or {}
-            if not isinstance(data, dict):
-                raise KcError(
-                    code="KC_CONFIG_INVALID",
-                    message="Eval pack must be a YAML object.",
-                    details={"path": repo_relative(pack_path)},
-                )
-            cases = list(data.get("cases", []))
+        if pack_path is None:
+            raise KcError(
+                code="KC_USAGE_ERROR",
+                message="Provide --pack.",
+                details={"option": "--pack"},
+            )
+        ensure_index(paths.sqlite_path, paths.sources_jsonl, paths.ranges_jsonl)
+        if not pack_path.exists():
+            raise KcError(
+                code="KC_FILE_NOT_FOUND",
+                message=f"Eval pack not found: {repo_relative(pack_path)}",
+                details={"path": repo_relative(pack_path)},
+            )
+        data = yaml.safe_load(pack_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(data, dict):
+            raise KcError(
+                code="KC_CONFIG_INVALID",
+                message="Eval pack must be a YAML object.",
+                details={"path": repo_relative(pack_path)},
+            )
+        cases = list(data.get("cases", []))
         results = []
         for case in cases:
             query = str(case.get("ask") or case.get("query") or "")
@@ -67,7 +72,7 @@ def run_eval(
         emit_success(
             "eval.run",
             {
-                "pack": repo_relative(pack_path) if pack_path else None,
+                "pack": repo_relative(pack_path),
                 "total": len(results),
                 "passed": sum(1 for item in results if item["passed"]),
                 "results": results,

@@ -64,11 +64,11 @@ def test_init_yes_creates_repo_layout(tmp_path: Path, monkeypatch) -> None:
 
 def test_invalid_format_returns_structured_error() -> None:
     result = runner.invoke(app, ["--format", "xml", "guide"])
-    assert result.exit_code == 80
+    assert result.exit_code == 10
     payload = parse(result.output)
     assert payload["ok"] is False
     assert payload["result"] is None
-    assert payload["errors"][0]["code"] == "KC_UNSUPPORTED_FEATURE"
+    assert payload["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
 
 
 def test_json_failure_result_is_null(tmp_path: Path, monkeypatch) -> None:
@@ -239,6 +239,11 @@ def test_help_outputs_include_command_explanations() -> None:
     assert "Validate artifact schema" in artifact.output
     assert "Validate, lock, snapshot" in artifact.output
 
+    validate = runner.invoke(app, ["artifact", "validate", "--help"])
+    assert validate.exit_code == 0
+    assert "Allow kc:uncited markers" in validate.output
+    assert "Allow ." not in validate.output
+
 
 def test_context_budget_and_export_out_are_validated(tmp_path: Path, monkeypatch) -> None:
     _init_repo_with_source(tmp_path, monkeypatch)
@@ -256,6 +261,77 @@ def test_context_budget_and_export_out_are_validated(tmp_path: Path, monkeypatch
     assert bad_budget.exit_code == 10
     assert parse(bad_budget.output)["errors"][0]["code"] == "KC_CONFIG_INVALID"
 
+    malformed_budget = runner.invoke(
+        app,
+        ["context", "prepare", "--ask", "ownership", "--budget", "garbage"],
+    )
+    assert malformed_budget.exit_code == 10
+    assert parse(malformed_budget.output)["errors"][0]["code"] == "KC_CONFIG_INVALID"
+
+    ok_budget = runner.invoke(
+        app,
+        ["context", "prepare", "--ask", "ownership", "--budget", "max_sources=1,max_ranges=1"],
+    )
+    assert ok_budget.exit_code == 0
+    assert parse(ok_budget.output)["result"]["budget"] == {"max_sources": 1, "max_ranges": 1}
+
     export = runner.invoke(app, ["export", "--format", "jsonl", "--out", "../outside.json"])
     assert export.exit_code == 10
     assert parse(export.output)["errors"][0]["code"] == "KC_PATH_OUTSIDE_REPO"
+
+    out = runner.invoke(app, ["export", "--format", "jsonl", "--out", "knowledge/exports/out.json"])
+    assert out.exit_code == 0
+    assert parse(out.output)["result"]["content_location"] == "file"
+
+
+def test_usage_errors_return_json_envelope(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert runner.invoke(app, ["init", "--yes"]).exit_code == 0
+
+    result = runner.invoke(app, ["source", "search"])
+    assert result.exit_code == 2
+    payload = parse(result.output)
+    assert_envelope(payload, ok=False, command="source.search")
+    assert payload["errors"][0]["code"] == "KC_USAGE_ERROR"
+
+
+def test_missing_data_dir_fails_clearly(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["--data-dir", "missing_data", "source", "search", "test"])
+    assert result.exit_code == 11
+    payload = parse(result.output)
+    assert payload["errors"][0]["code"] == "KC_CONFIG_NOT_FOUND"
+    assert payload["errors"][0]["details"]["data_dir"] == "missing_data"
+
+
+def test_init_idempotency_and_profile_validation(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    first = runner.invoke(app, ["init", "--yes"])
+    assert first.exit_code == 0
+    assert "created" in parse(first.output)["result"]
+
+    second = runner.invoke(app, ["init", "--yes"])
+    assert second.exit_code == 0
+    payload = parse(second.output)
+    assert ".kc/state.sqlite" in payload["result"]["noop"]
+    assert ".kc/state.sqlite" not in payload["result"]["created"]
+
+    bad = runner.invoke(app, ["init", "--profile", "xyz123", "--dry-run"])
+    assert bad.exit_code == 10
+    assert parse(bad.output)["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
+
+
+def test_eval_run_requires_pack(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert runner.invoke(app, ["init", "--yes"]).exit_code == 0
+    result = runner.invoke(app, ["eval", "run"])
+    assert result.exit_code == 2
+    assert parse(result.output)["errors"][0]["code"] == "KC_USAGE_ERROR"
+
+
+def test_citation_check_requires_target(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert runner.invoke(app, ["init", "--yes"]).exit_code == 0
+    result = runner.invoke(app, ["citation", "check"])
+    assert result.exit_code == 2
+    assert parse(result.output)["errors"][0]["code"] == "KC_USAGE_ERROR"

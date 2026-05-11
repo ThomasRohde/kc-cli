@@ -46,6 +46,32 @@ def test_source_add_extracts_ranges_and_search_returns_citation(
     assert first["citation_token"].startswith("[kc:src_")
 
 
+def test_source_search_rejects_non_positive_limit(tmp_path: Path, monkeypatch) -> None:
+    init_repo(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["source", "search", "owners", "--limit", "0"])
+    assert result.exit_code == 10
+    assert parse(result.output)["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
+
+    negative = runner.invoke(app, ["source", "search", "owners", "--limit", "-5"])
+    assert negative.exit_code == 10
+    assert parse(negative.output)["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
+
+    mode = runner.invoke(app, ["source", "search", "owners", "--mode", "xyz"])
+    assert mode.exit_code == 10
+    assert parse(mode.output)["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
+
+
+def test_source_add_empty_file_warns_no_ranges(tmp_path: Path, monkeypatch) -> None:
+    init_repo(tmp_path, monkeypatch)
+    source = tmp_path / "empty.md"
+    source.write_text("", encoding="utf-8")
+    result = runner.invoke(app, ["source", "add", "empty.md", "--yes"])
+    assert result.exit_code == 0
+    payload = parse(result.output)
+    assert payload["result"]["ranges_extracted"] == 0
+    assert "KC_SOURCE_NO_RANGES" in {item["code"] for item in payload["warnings"]}
+
+
 def test_source_add_dry_run_previews_stable_source_id(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -146,6 +172,22 @@ def test_source_inspect_reports_staleness(tmp_path: Path, monkeypatch) -> None:
     assert payload["result"]["ranges"]
 
 
+def test_search_and_context_warn_on_stale_sources(tmp_path: Path, monkeypatch) -> None:
+    init_repo(tmp_path, monkeypatch)
+    source = tmp_path / "policy.md"
+    source.write_text("ownership lifecycle text\n", encoding="utf-8")
+    assert runner.invoke(app, ["source", "add", "policy.md", "--yes"]).exit_code == 0
+    source.write_text("changed ownership lifecycle text\n", encoding="utf-8")
+
+    search = runner.invoke(app, ["source", "search", "ownership"])
+    assert search.exit_code == 0
+    assert "KC_SOURCE_STALE" in {item["code"] for item in parse(search.output)["warnings"]}
+
+    context = runner.invoke(app, ["context", "prepare", "--ask", "ownership"])
+    assert context.exit_code == 0
+    assert "KC_SOURCE_STALE" in {item["code"] for item in parse(context.output)["warnings"]}
+
+
 def test_source_refresh_dry_run_and_yes_preserves_source_id(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -205,3 +247,14 @@ def test_lint_detects_duplicate_ids(tmp_path: Path, monkeypatch) -> None:
     payload = parse(lint.output)
     assert payload["errors"][0]["code"] == "KC_CONFIG_INVALID"
     assert "Duplicate source_id" in payload["errors"][0]["message"]
+
+
+def test_lint_rejects_unknown_or_empty_checks(tmp_path: Path, monkeypatch) -> None:
+    init_repo(tmp_path, monkeypatch)
+    invalid = runner.invoke(app, ["lint", "--checks", "invalid_check"])
+    assert invalid.exit_code == 10
+    assert parse(invalid.output)["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
+
+    empty = runner.invoke(app, ["lint", "--checks", ""])
+    assert empty.exit_code == 10
+    assert parse(empty.output)["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
