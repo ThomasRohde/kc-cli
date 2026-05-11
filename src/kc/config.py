@@ -52,7 +52,7 @@ update_log = true
 allow_skip_validate_in_llm = false
 
 [task]
-enable_wait_exit_code = true
+enable_wait_exit_code = false
 waiting_exit_code = 40
 """
 
@@ -80,6 +80,10 @@ class KcConfig:
     @property
     def allow_skip_validate_in_llm(self) -> bool:
         return bool((self.raw or {}).get("mutation", {}).get("allow_skip_validate_in_llm", False))
+
+    @property
+    def enable_wait_exit_code(self) -> bool:
+        return bool((self.raw or {}).get("task", {}).get("enable_wait_exit_code", False))
 
     @property
     def waiting_exit_code(self) -> int:

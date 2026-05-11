@@ -178,7 +178,7 @@ def test_table_and_markdown_formats_cover_representative_commands(
 def test_task_status_has_table_format(tmp_path: Path, monkeypatch) -> None:
     _init_repo_with_source(tmp_path, monkeypatch)
     start = runner.invoke(app, ["task", "start", "--goal", "Create ownership page"])
-    assert start.exit_code == 40
+    assert start.exit_code == 0
     task_id = parse(start.output)["result"]["task"]["task_id"]
     status = runner.invoke(app, ["--format", "table", "task", "status", "--task-id", task_id])
     assert status.exit_code == 0

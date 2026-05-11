@@ -31,7 +31,7 @@ def test_task_start_returns_waiting_envelope(tmp_path: Path, monkeypatch) -> Non
             "knowledge/wiki/ownership.md",
         ],
     )
-    assert result.exit_code == 40
+    assert result.exit_code == 0
     payload = parse(result.output)
     assert payload["ok"] is True
     assert payload["command"] == "task.start"
@@ -39,6 +39,22 @@ def test_task_start_returns_waiting_envelope(tmp_path: Path, monkeypatch) -> Non
     status = runner.invoke(app, ["task", "status", "--task-id", task_id])
     assert status.exit_code == 0
     assert parse(status.output)["result"]["status"] == "awaiting_agent"
+
+
+def test_task_start_wait_exit_code_is_opt_in(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert runner.invoke(app, ["init", "--yes"]).exit_code == 0
+    config = tmp_path / "kc.toml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "enable_wait_exit_code = false",
+            "enable_wait_exit_code = true",
+        ),
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["task", "start", "--goal", "Create ownership page"])
+    assert result.exit_code == 40
+    assert parse(result.output)["ok"] is True
 
 
 def test_core_has_no_llm_provider_dependencies() -> None:

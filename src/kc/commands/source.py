@@ -19,7 +19,7 @@ from kc.commands.common import (
 from kc.config import load_config
 from kc.errors import KcError
 from kc.fingerprints import normalized_fingerprint, raw_fingerprint
-from kc.ids import new_id
+from kc.ids import stable_id
 from kc.models.source import Authority, SourceRecord
 from kc.models.source_range import SourceRangeRecord
 from kc.output import emit_success, warning
@@ -132,7 +132,7 @@ def add(
         norm_fp = normalized_fingerprint(source_path)
         timestamp = datetime.now(UTC).isoformat()
         source = SourceRecord(
-            source_id=new_id("src"),
+            source_id=stable_id("src", uri, raw_fp, norm_fp),
             uri=uri,
             display_name=source_path.name,
             media_type=media_type,

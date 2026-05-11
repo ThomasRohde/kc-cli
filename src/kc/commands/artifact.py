@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import quote
 
 import orjson
 import typer
@@ -12,6 +13,7 @@ from kc.artifacts.diff import build_artifact_plan
 from kc.artifacts.frontmatter import dump_frontmatter
 from kc.artifacts.markdown import (
     citation_coverage_issues,
+    markdown_body_line_offset,
     markdown_title,
     read_markdown_artifact,
     required_section_names,
@@ -262,6 +264,7 @@ def validate_artifact_file(
                 status=status,
                 requires_citations=requires_citations,
                 allow_uncited=allow_uncited,
+                line_offset=markdown_body_line_offset(text),
             )
         )
         edges, citation_problems = validate_citations(
@@ -395,8 +398,9 @@ def _validate_source_refs(
                     "source_id": source_id,
                 }
             )
-        for range_id in ref.get("ranges", ref.get("range_ids", [])) or []:
-            range_record = range_by_id.get(range_id)
+        for raw_range in ref.get("ranges", ref.get("range_ids", [])) or []:
+            range_id = str(raw_range)
+            range_record = _resolve_source_ref_range(source_id, range_id, range_by_id)
             if range_record is None:
                 errors.append(
                     {
@@ -416,6 +420,34 @@ def _validate_source_refs(
                     }
                 )
     return errors
+
+
+def _source_ref_locator_aliases(range_record: Any) -> set[str]:
+    locator = range_record.locator
+    if locator.kind == "line_range":
+        return {f"L{locator.start_line}-L{locator.end_line}"}
+    if locator.kind == "json_pointer":
+        pointer = str(locator.pointer or "/")
+        return {f"JP:{pointer}", f"JP:{quote(pointer, safe='/~')}"}
+    if locator.kind == "csv_row_range":
+        return {f"CSV:R{locator.start_row}-R{locator.end_row}", f"R{locator.start_row}-R{locator.end_row}"}
+    return set()
+
+
+def _resolve_source_ref_range(
+    source_id: Any,
+    value: str,
+    range_by_id: dict[str, Any],
+) -> Any | None:
+    direct = range_by_id.get(value)
+    if direct is not None:
+        return direct
+    for range_record in range_by_id.values():
+        if source_id is not None and range_record.source_id != source_id:
+            continue
+        if value in _source_ref_locator_aliases(range_record):
+            return range_record
+    return None
 
 
 def _validate_json_citations(

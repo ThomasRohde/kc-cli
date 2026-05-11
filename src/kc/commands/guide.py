@@ -166,7 +166,7 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
             "20": "Provenance/citation error",
             "30": "Index/build error",
             "31": "Retrieval model error",
-            "40": "Waiting for external agent/user event; not a failure",
+            "40": "Optional waiting-state code when enable_wait_exit_code is explicitly enabled",
             "50": "I/O error",
             "60": "Lock/concurrency error",
             "70": "Persistence/state error",
@@ -384,7 +384,7 @@ def _commands() -> dict[str, Any]:
             result_summary="Task record, candidate ranges, instructions, and resume command.",
             examples=["kc task start --goal 'Create ownership page' --target knowledge/wiki/ownership.md"],
             common_errors=["KC_INDEX_BUILD_FAILED"],
-            exit_codes=[0, 30, 40],
+            exit_codes=[0, 30],
         ),
         "task.status": _command(
             "kc task status --task-id TASK_ID",

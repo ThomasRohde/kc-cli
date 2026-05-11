@@ -42,5 +42,5 @@ update_log = true
 allow_skip_validate_in_llm = false
 
 [task]
-enable_wait_exit_code = true
+enable_wait_exit_code = false
 waiting_exit_code = 40

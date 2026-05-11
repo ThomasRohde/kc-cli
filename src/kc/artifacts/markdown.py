@@ -15,6 +15,16 @@ def read_markdown_artifact(path: Path) -> tuple[dict[str, Any], str, str]:
     return frontmatter, body, text
 
 
+def markdown_body_line_offset(text: str) -> int:
+    normalized = text.replace("\r\n", "\n")
+    if not normalized.startswith("---\n"):
+        return 0
+    parts = normalized.split("---\n", 2)
+    if len(parts) < 3:
+        return 0
+    return ("---\n" + parts[1] + "---\n").count("\n")
+
+
 def required_section_names(body: str) -> set[str]:
     headings = set()
     for line in body.splitlines():
@@ -29,6 +39,7 @@ def citation_coverage_issues(
     status: str,
     requires_citations: bool,
     allow_uncited: bool,
+    line_offset: int = 0,
 ) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     if not requires_citations:
@@ -76,7 +87,7 @@ def citation_coverage_issues(
             }
         )
 
-    for line_no, raw_line in enumerate(body.splitlines(), start=1):
+    for line_no, raw_line in enumerate(body.splitlines(), start=1 + line_offset):
         line = raw_line.strip()
         if line.startswith("```"):
             flush()

@@ -394,8 +394,7 @@
         ],
         "exit_codes": [
           0,
-          30,
-          40
+          30
         ]
       },
       "task.status": {

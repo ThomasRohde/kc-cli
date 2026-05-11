@@ -157,6 +157,11 @@ This paragraph has no citation.
 """,
         encoding="utf-8",
     )
+    missing_line = next(
+        idx
+        for idx, line in enumerate(artifact.read_text(encoding="utf-8").splitlines(), start=1)
+        if line == "This paragraph has no citation."
+    )
     result = runner.invoke(
         app, ["artifact", "validate", "--file", str(artifact.relative_to(tmp_path))]
     )
@@ -167,6 +172,40 @@ This paragraph has no citation.
         "KC_ARTIFACT_SCHEMA_INVALID",
         "KC_VALIDATION_MISSING_CITATION",
     }
+    assert any(
+        error["code"] == "KC_VALIDATION_MISSING_CITATION"
+        and error["details"].get("line") == missing_line
+        for error in payload["errors"]
+    )
+
+
+def test_artifact_validate_accepts_source_ref_line_locators(
+    tmp_path: Path, monkeypatch
+) -> None:
+    hit = setup_repo_with_source(tmp_path, monkeypatch)
+    artifact = write_valid_artifact(tmp_path, hit["citation_token"])
+    locator = hit["locator"]
+    source_ref_locator = f"L{locator['start_line']}-L{locator['end_line']}"
+    artifact.write_text(
+        artifact.read_text(encoding="utf-8").replace(
+            "source_refs: []",
+            "\n".join(
+                [
+                    "source_refs:",
+                    f"- source_id: {hit['source_id']}",
+                    "  ranges:",
+                    f"  - {source_ref_locator}",
+                ]
+            ),
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app, ["artifact", "validate", "--file", str(artifact.relative_to(tmp_path))]
+    )
+    assert result.exit_code == 0
+    assert parse(result.output)["result"]["valid"] is True
 
 
 def test_llm_mode_blocks_skip_validate(tmp_path: Path, monkeypatch) -> None:

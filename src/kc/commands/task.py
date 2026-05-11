@@ -81,7 +81,12 @@ def start(
         atomic_write_text(
             paths.tasks_dir / f"{task.task_id}.json", json_dumps(task.model_dump(mode="json"))
         )
-        exit_code = load_config().waiting_exit_code if await_agent else 0
+        config = load_config()
+        exit_code = (
+            config.waiting_exit_code
+            if await_agent and config.enable_wait_exit_code
+            else 0
+        )
         emit_success(
             "task.start",
             {

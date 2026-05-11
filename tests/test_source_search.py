@@ -46,6 +46,25 @@ def test_source_add_extracts_ranges_and_search_returns_citation(
     assert first["citation_token"].startswith("[kc:src_")
 
 
+def test_source_add_dry_run_previews_stable_source_id(
+    tmp_path: Path, monkeypatch
+) -> None:
+    init_repo(tmp_path, monkeypatch)
+    source = tmp_path / "policy.md"
+    source.write_text(
+        "# Ownership\n\nCapability owners maintain definitions.\n",
+        encoding="utf-8",
+    )
+
+    dry_run = runner.invoke(app, ["source", "add", "policy.md", "--domain", "bcm", "--dry-run"])
+    assert dry_run.exit_code == 0
+    assert not (tmp_path / "knowledge" / "sources.jsonl").read_text(encoding="utf-8").strip()
+
+    apply = runner.invoke(app, ["source", "add", "policy.md", "--domain", "bcm", "--yes"])
+    assert apply.exit_code == 0
+    assert parse(dry_run.output)["result"]["source_id"] == parse(apply.output)["result"]["source_id"]
+
+
 def test_structured_sources_emit_json_pointer_and_csv_citations(
     tmp_path: Path, monkeypatch
 ) -> None:
