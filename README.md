@@ -4,80 +4,97 @@
 [![Python](https://img.shields.io/pypi/pyversions/kc-cli.svg)](https://pypi.org/project/kc-cli/)
 [![License](https://img.shields.io/pypi/l/kc-cli.svg)](https://pypi.org/project/kc-cli/)
 
-`kc-cli` installs the `kc` command: a deterministic, local-first knowledge
-compiler harness for external agents.
+`kc-cli` installs `kc`, a local-first knowledge compiler for people and agents
+who need grounded project knowledge instead of another pile of loose notes.
 
-Agents write the semantic content. `kc` handles the local mechanics around that
-work: source registration, range extraction, search, context preparation,
-citation validation, safe artifact apply, task state, and exports.
+Register the source material you trust. Ask `kc` for the relevant evidence.
+Let a human or external agent write the semantic content. Then use `kc` to
+validate citations, preview the change, apply it safely, and keep the knowledge
+workspace searchable.
 
 `kc` does not call an LLM, does not answer questions for you, and does not add a
-provider dependency to your project. Built-in hybrid retrieval uses SQLite BM25
-and the bundled `model2vec` `potion-base-8M` model for ranking only.
+model provider dependency to your project. It is the deterministic harness
+around that work: source registration, search, context preparation, citation
+validation, safe apply, task state, and exports.
 
-## Contents
+## Why use kc?
 
-- [Install](#install)
-- [Quick start](#quick-start)
-- [Core concepts](#core-concepts)
-- [Workspace layout](#workspace-layout)
-- [Command reference](#command-reference)
-- [Common workflows](#common-workflows)
-- [Citations](#citations)
-- [Output contract](#output-contract)
-- [Configuration](#configuration)
-- [Safety model](#safety-model)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
-- [Publishing](#publishing)
+- **Give agents better inputs.** Prepare compact, cited evidence packs before an
+  agent writes a page, policy, ADR, runbook, or implementation note.
+- **Keep knowledge auditable.** Material claims can point back to registered
+  source ranges such as Markdown lines, JSON pointers, or CSV rows.
+- **Reduce drift.** `kc lint` can find stale sources, broken citations, orphaned
+  artifacts, duplicate records, and stale indexes.
+- **Make changes safely.** Mutation commands are dry-run or explicit-apply by
+  default, with locks and snapshots around artifact application.
+- **Stay local and provider-neutral.** Source data, indexes, artifacts, and task
+  state live in the repository. Agents remain external and interchangeable.
+- **Automate without scraping text output.** Commands emit stable structured
+  envelopes by default and expose deterministic next steps.
+
+## Good fits
+
+| Use case | What kc gives you |
+| --- | --- |
+| Project implementation wiki | Pages grounded in code, ADRs, design notes, and existing docs. |
+| Agent handoff packs | Search results and context bundles an external agent can use without guessing. |
+| Compliance or policy knowledge | Traceable claims with citations back to local source material. |
+| Onboarding material | Curated knowledge pages that can be refreshed as source files change. |
+| Repository self-knowledge | A durable `knowledge/` workspace that future contributors and agents can query. |
+| Retrieval evaluation | Deterministic eval packs for checking whether the right evidence is found. |
+| Knowledge export | JSONL, Markdown bundle, or `llms.txt` exports from registered knowledge. |
 
 ## Install
 
-`kc-cli` requires Python 3.12 or newer.
+`kc-cli` requires Python 3.12 or newer. The recommended install path is
+[uv](https://docs.astral.sh/uv/):
+
+```bash
+uv tool install kc-cli
+kc --help
+kc --version
+```
+
+Try it without installing a persistent tool:
+
+```bash
+uvx --from kc-cli kc --help
+```
+
+The Python package name is `kc-cli`; the console command is `kc`.
+
+`pip` works too:
 
 ```bash
 python -m pip install kc-cli
 ```
 
-After installation, run:
+## First workspace
 
-```bash
-kc --help
-kc --version
-```
+A typical `kc` workflow has five steps:
 
-The Python package name is `kc-cli`; the console command is `kc`.
-
-### Install from source
-
-```bash
-git clone <repo-url> kc-cli
-cd kc-cli
-python -m pip install -e ".[dev]"
-kc --help
-```
-
-When the package is not installed, run the CLI from the repository root:
-
-```powershell
-$env:PYTHONPATH='src'; python -m kc --help
-```
-
-## Quick start
-
-Create a workspace, register source material, prepare grounded context, write an
-artifact yourself or with an external agent, then validate and apply it.
+1. Initialize a repository-local knowledge workspace.
+2. Register source files that should ground future knowledge.
+3. Search or prepare context for the question at hand.
+4. Write the artifact yourself or ask an external agent to write it.
+5. Validate, diff, and apply the artifact.
 
 ```bash
 kc init --yes
 kc source add docs/policy.md --domain policy --yes
-kc index build
-kc context prepare --ask "Create an ownership page" --shape knowledge_page --target knowledge/wiki/ownership.md
+kc --format markdown source search "ownership responsibilities" --domain policy
+kc context prepare --ask "Create an ownership page" --shape knowledge_page --grounding required --target knowledge/wiki/ownership.md
 kc artifact new --type knowledge_page --path knowledge/wiki/ownership.md --title "Ownership" --yes
 ```
 
-Edit `knowledge/wiki/ownership.md` with material claims cited using the source
-tokens returned by `kc context prepare` or `kc source search`.
+Edit `knowledge/wiki/ownership.md` with citations from `kc source search` or
+`kc context prepare`:
+
+```markdown
+The policy owner reviews the document every quarter. [kc:src_01HX...:L12-L18]
+```
+
+Then check and apply the result:
 
 ```bash
 kc artifact validate --file knowledge/wiki/ownership.md
@@ -87,14 +104,34 @@ kc artifact apply --file knowledge/wiki/ownership.md --yes
 kc lint
 ```
 
-Use `--dry-run` before mutating commands when you want the planned change
-without writing files.
+## How kc works with agents
 
-## Core concepts
+`kc` is intentionally not the agent. It is the compiler harness around agentic
+knowledge work.
 
-### Sources
+```text
+trusted local sources
+        |
+        v
+source registration and range extraction
+        |
+        v
+search and context preparation
+        |
+        v
+human or external agent writes semantic content
+        |
+        v
+citation validation, diff, apply, lint, export
+```
 
-Sources are local files that ground future knowledge. `kc source add` records
+That split keeps responsibilities clear: the agent writes and synthesizes;
+`kc` tracks evidence, validates provenance, and mutates repository state in a
+predictable way.
+
+## Core ideas
+
+**Sources** are local files that ground future knowledge. Adding a source records
 metadata, fingerprints, and extracted citation ranges in `knowledge/`.
 
 ```bash
@@ -103,53 +140,43 @@ kc source add docs/policy.md --domain policy --yes
 kc source inspect docs/policy.md --ranges
 ```
 
-### Source ranges
-
-Ranges are stable citation targets extracted from registered sources. They can
-refer to line ranges, JSON pointers, or CSV row ranges. Search commands return
-range records with ready-to-use citation tokens.
+**Ranges** are stable citation targets extracted from sources. Search commands
+return ready-to-use citation tokens.
 
 ```bash
-kc source search "ownership responsibilities" --domain policy
-kc source search "retention period" --limit 5
+kc source search "retention period" --domain policy --limit 5
 ```
 
-### Context
-
-`kc context prepare` gathers evidence and instructions for an external agent. It
-does not answer the question or write the artifact.
+**Context** is the evidence package for a writing task. `kc context prepare`
+gathers relevant ranges, policies, artifact matches, and next commands without
+answering the question.
 
 ```bash
 kc context prepare --ask "Summarize retention obligations" --shape knowledge_page --grounding required
 ```
 
-### Artifacts
-
-Artifacts are durable knowledge outputs, usually Markdown knowledge pages or
-typed JSON/YAML documents. `kc` can create skeletons, validate citations, build a
-diff plan, and safely apply registry updates.
+**Artifacts** are durable outputs such as Markdown knowledge pages or typed
+JSON/YAML documents. `kc` can create skeletons, validate citations, build a
+diff plan, and apply registry updates.
 
 ```bash
 kc artifact new --type knowledge_page --path knowledge/wiki/retention.md --title "Retention" --yes
 kc artifact validate --file knowledge/wiki/retention.md
-kc artifact diff --file knowledge/wiki/retention.md
 kc artifact apply --file knowledge/wiki/retention.md --yes
 ```
 
-### Tasks
-
-Tasks store durable workflow state for external-agent work.
+**Tasks** store durable state for longer external-agent workflows.
 
 ```bash
 kc task start --goal "Create retention page" --target knowledge/wiki/retention.md
 kc task status --task-id task_01HX
-kc task inspect --task-id task_01HX
 kc task resume --task-id task_01HX --event artifact_created --input @event.json
 ```
 
 ## Workspace layout
 
-`kc init --yes` creates the local project layout:
+`kc init --yes` creates a Git-friendly durable knowledge directory and local
+runtime state:
 
 ```text
 repo-root/
@@ -173,126 +200,42 @@ repo-root/
     cache/
 ```
 
-The `knowledge/` directory is durable and Git-friendly. The `.kc/` directory is
-local runtime state and is normally ignored by Git.
+Commit `knowledge/` when it is part of the project record. Keep `.kc/` local
+unless you have a specific reason to share runtime state.
 
-## Command reference
+## Common commands
 
-All commands support the global options documented in [Output contract](#output-contract).
-Use `kc guide` for a machine-readable command manifest.
-
-| Command | Mutates | Confirmation | Purpose |
-| --- | --- | --- | --- |
-| `kc guide [--section SECTION]` | No | None | Emit the CLI manifest, schemas, workflows, examples, and error taxonomy. |
-| `kc conformance` | No | None | Run read-only CLI contract checks. |
-| `kc init --dry-run\|--yes` | Yes | Dry-run unless `--yes` | Create the repo-local layout, config, JSONL stores, and SQLite state. |
-| `kc source add FILE --domain DOMAIN --dry-run\|--yes` | Yes | Dry-run unless `--yes` | Register a source, fingerprint it, extract ranges, and update indexes. |
-| `kc source inspect SOURCE_OR_PATH [--ranges]` | No | None | Show source metadata, fingerprint state, and optional ranges. |
-| `kc source refresh SOURCE_OR_PATH --dry-run\|--yes` | Yes | Dry-run unless `--yes` | Refresh a registered source and replace extracted ranges. |
-| `kc source search QUERY [--domain DOMAIN] [--limit N]` | No | None | Search source ranges with hybrid retrieval and return citation tokens. |
-| `kc index build [--clean] [--dry-run]` | Yes | Cache rebuild; `--dry-run` previews | Rebuild BM25 and semantic indexes. |
-| `kc context prepare --ask ASK --shape SHAPE [--domain DOMAIN] [--target PATH] [--grounding required\|optional] [--budget max_sources=N,max_ranges=N]` | No | None | Emit evidence, policies, artifact matches, and next commands. |
-| `kc artifact new --type TYPE --path PATH --title TITLE --dry-run\|--yes` | Yes | Dry-run unless `--yes` | Create a deterministic artifact skeleton. |
-| `kc artifact validate --file PATH [--schema SCHEMA] [--allow-uncited]` | No | None | Validate artifact schema, sections, citations, and provenance. |
-| `kc artifact diff --file PATH [--against BASELINE]` | No | None | Build a structured apply plan and show artifact changes. |
-| `kc artifact apply --file PATH\|--plan PLAN --dry-run\|--yes [--skip-validate] [--idempotency-key KEY]` | Yes | Dry-run unless `--yes` | Validate, lock, snapshot, register, and apply an artifact safely. |
-| `kc citation check --file PATH\|--all [--fail-on-warning]` | No | None | Check citation tokens and provenance for one or all artifacts. |
-| `kc lint [--checks CHECKS]` | No | None | Run repository integrity checks for citations, stale sources, orphans, duplicates, index state, and log references. |
-| `kc task start --goal GOAL [--shape SHAPE] [--domain DOMAIN] [--target PATH] [--await-agent/--no-await-agent]` | Yes | Task state write | Create a task and gather candidate ranges. |
-| `kc task status --task-id TASK_ID` | No | None | Show compact task state and next commands. |
-| `kc task inspect --task-id TASK_ID` | No | None | Show the full stored task record. |
-| `kc task resume --task-id TASK_ID --event EVENT --input JSON_OR_FILE` | Yes | Task state write | Resume an awaiting task with a structured event. |
-| `kc eval run --pack FILE` | No | None | Run deterministic retrieval evaluation packs. |
-| `kc export --format jsonl\|markdown-bundle\|llms-txt [--out FILE]` | Yes when `--out` is provided | Writes `--out` without `--yes` | Export registered knowledge. |
-| `kc doctor` | No | None | Inspect config, state, locks, and semantic index health. |
-| `kc doctor locks [--clear-stale --yes]` | Yes when clearing | Dry-run unless `--clear-stale --yes` | List or clear lock files. |
-
-### Built-in guide
-
-`kc guide` is the authoritative command catalog.
+`kc guide` is the authoritative command catalog. It is designed for humans,
+agents, and tool integrations.
 
 ```bash
 kc guide
 kc guide --section commands
 kc guide --section workflows
 kc guide --section errors
-```
-
-For agent/tool integrations, prefer JSON:
-
-```bash
 kc --format json guide --section commands
 ```
 
-## Common workflows
-
-### Add and search a source
-
-```bash
-kc source add docs/policy.md --domain policy --dry-run
-kc source add docs/policy.md --domain policy --yes
-kc source search "ownership responsibilities" --domain policy
-```
-
-### Refresh a changed source
-
-```bash
-kc source inspect docs/policy.md --ranges
-kc source refresh docs/policy.md --dry-run
-kc source refresh docs/policy.md --yes
-kc lint
-```
-
-### Create a cited knowledge page
-
-```bash
-kc context prepare --ask "Create an ownership page" --shape knowledge_page --target knowledge/wiki/ownership.md
-kc artifact new --type knowledge_page --path knowledge/wiki/ownership.md --title "Ownership" --yes
-```
-
-Write the page with citations such as:
-
-```markdown
-The policy owner reviews the document every quarter. [kc:src_01HX...:L12-L18]
-```
-
-Then validate and apply it:
-
-```bash
-kc artifact validate --file knowledge/wiki/ownership.md
-kc artifact diff --file knowledge/wiki/ownership.md
-kc artifact apply --file knowledge/wiki/ownership.md --dry-run
-kc artifact apply --file knowledge/wiki/ownership.md --yes
-```
-
-### Check citations
-
-```bash
-kc citation check --file knowledge/wiki/ownership.md
-kc citation check --all --fail-on-warning
-```
-
-### Export knowledge
-
-```bash
-kc export --format jsonl
-kc export --format llms-txt
-kc export --format markdown-bundle --out knowledge/exports/bundle.md
-```
-
-### Run retrieval evals
-
-```bash
-kc eval run --pack knowledge/evals/basic.yaml
-```
-
-### Inspect health
-
-```bash
-kc doctor
-kc doctor locks
-kc lint
-```
+| Command | Purpose |
+| --- | --- |
+| `kc init` | Create the workspace layout, config, stores, and local state. |
+| `kc source add` | Register a source, fingerprint it, extract ranges, and update indexes. |
+| `kc source inspect` | Show source metadata, fingerprint state, and optional ranges. |
+| `kc source refresh` | Refresh a changed registered source. |
+| `kc source search` | Search registered source ranges and return citation tokens. |
+| `kc index build` | Rebuild BM25 and semantic search indexes. |
+| `kc context prepare` | Gather evidence and instructions for a writing task. |
+| `kc artifact new` | Create a deterministic artifact skeleton. |
+| `kc artifact validate` | Validate schema, required sections, citations, and provenance. |
+| `kc artifact diff` | Build a structured apply plan before mutation. |
+| `kc artifact apply` | Validate, lock, snapshot, register, and apply an artifact. |
+| `kc citation check` | Check citation tokens and provenance for one or all artifacts. |
+| `kc lint` | Run repository integrity checks. |
+| `kc task start/status/inspect/resume` | Track longer-running agent workflows. |
+| `kc eval run` | Run deterministic retrieval eval packs. |
+| `kc export` | Export registered knowledge as JSONL, Markdown bundle, or `llms.txt`. |
+| `kc doctor` | Inspect config, state, locks, and semantic index health. |
+| `kc conformance` | Run read-only CLI contract checks. |
 
 ## Citations
 
@@ -304,13 +247,13 @@ Markdown artifacts use parseable citation tokens:
 | `[kc:src_<id>:JP:<percent-encoded-json-pointer>]` | Cite a JSON/YAML/TOML pointer range. |
 | `[kc:src_<id>:CSV:R<start>-R<end>]` | Cite CSV rows. |
 
-Special markers:
+Special markers make intent explicit:
 
 | Marker | Meaning |
 | --- | --- |
-| `[kc:inference]` | Marks synthesis or interpretation based on cited facts. |
-| `[kc:todo]` | Marks unresolved work. Draft-only; valid draft artifacts emit a warning so agents can detect placeholders. |
-| `[kc:uncited]` | Marks uncited content. Fails validation unless explicitly allowed. |
+| `[kc:inference]` | Synthesis or interpretation based on cited facts. |
+| `[kc:todo]` | Unresolved work. Valid drafts warn so agents can detect placeholders. |
+| `[kc:uncited]` | Uncited content. Validation fails unless explicitly allowed. |
 
 JSON artifacts should use structured citation references:
 
@@ -325,7 +268,7 @@ JSON artifacts should use structured citation references:
 }
 ```
 
-## Output contract
+## Output and automation
 
 The default output format is JSON. Every successful or failed JSON response uses
 the `kc.result.v1` envelope:
@@ -346,22 +289,13 @@ the `kc.result.v1` envelope:
 }
 ```
 
-Command-line usage failures, such as a missing argument, are also reported in
-this envelope with `KC_USAGE_ERROR` and process exit code `2`. When multiple
-errors are present, the process exits with the maximum `exit_code` in the
-envelope.
+Use `--format table` or `--format markdown` for human views when available.
+Use JSON for integrations.
 
-Global options:
-
-| Option | Values | Default | Notes |
-| --- | --- | --- | --- |
-| `--format`, `-f` | `json`, `table`, `markdown` | `json` | JSON is the machine contract; table and markdown are deterministic human views. |
-| `--data-dir` | Path | `knowledge` | Durable knowledge directory; workspace commands fail clearly if it does not exist. |
-| `--state-dir` | Path | `.kc` | Local state directory. |
-| `--quiet`, `-q` | Flag | Off | Suppress stderr diagnostics. |
-| `--request-id` | String | Generated | Use a caller-provided trace ID. |
-| `--no-input` | Flag | Off | Fail instead of prompting. |
-| `--version`, `-V` | Flag | Off | Print version and exit. |
+```bash
+kc --format markdown source search "retention period"
+kc --format json guide --section commands
+```
 
 `LLM=true` forces JSON output, quiet mode, no ANSI, and no prompts:
 
@@ -402,12 +336,8 @@ atomic_writes = true
 create_snapshots = true
 ```
 
-Use command-line `--data-dir` and `--state-dir` when a workspace uses
-non-default paths.
-
-Hybrid search combines SQLite FTS5/BM25 and semantic vector rankings with
-reciprocal rank fusion. BM25 scores can be negative on small or term-heavy
-corpora; semantic scores are cosine similarities from the bundled local model.
+Built-in hybrid retrieval uses SQLite FTS5/BM25 and the bundled `model2vec`
+`potion-base-8M` model for ranking only.
 
 ## Safety model
 
@@ -423,55 +353,30 @@ corpora; semantic scores are cosine similarities from the bundled local model.
 
 ## Troubleshooting
 
-### Stale source
-
-If `kc lint` reports `KC_SOURCE_STALE`, inspect and refresh the source:
+Refresh a changed source:
 
 ```bash
 kc source inspect docs/policy.md --ranges
 kc source refresh docs/policy.md --dry-run
 kc source refresh docs/policy.md --yes
+kc lint
 ```
 
-### Stale or missing index
-
-If search, context preparation, or lint reports index problems:
+Rebuild indexes:
 
 ```bash
 kc index build
 kc lint
 ```
 
-### Lock held
-
-If a previous write was interrupted:
+Inspect or clear stale locks:
 
 ```bash
 kc doctor locks
 kc doctor locks --clear-stale --yes
 ```
 
-### Common exit codes
-
-| Code | Meaning |
-| --- | --- |
-| `0` | Success |
-| `2` | Usage error |
-| `10` | Validation error |
-| `11` | Not found |
-| `12` | Already exists |
-| `13` | Conflict or invalid transition |
-| `20` | Provenance or citation error |
-| `30` | Index or build error |
-| `31` | Retrieval model error |
-| `40` | Optional waiting-state code when configured |
-| `50` | I/O error |
-| `60` | Lock or concurrency error |
-| `70` | Persistence or state error |
-| `80` | Unsupported feature or configuration |
-| `90` | Internal error |
-
-For the complete error taxonomy:
+See the complete error taxonomy:
 
 ```bash
 kc guide --section errors
@@ -479,34 +384,38 @@ kc guide --section errors
 
 ## Development
 
-Install development dependencies:
+This repository uses a `src/` layout and targets Python 3.12+. Use uv for local
+development:
 
 ```bash
-python -m pip install -e ".[dev]"
+git clone <repo-url> kc-cli
+cd kc-cli
+uv sync --extra dev
+uv run kc --help
 ```
 
 Run focused and broad checks:
 
 ```bash
-pytest tests/test_cli_contract.py -q
-pytest
-ruff check .
-pyright
-kc lint
+uv run pytest tests/test_cli_contract.py -q
+uv run pytest
+uv run ruff check .
+uv run pyright
+uv run kc lint
 ```
 
-When working without installing the package:
+When the package is not installed, run the CLI from the repository root:
 
 ```powershell
-$env:PYTHONPATH='src'; python -m kc --help
-$env:PYTHONPATH='src'; python -m kc lint
+$env:PYTHONPATH='src'; uv run python -m kc --help
+$env:PYTHONPATH='src'; uv run python -m kc lint
 ```
 
 ## Publishing
 
 The PyPI package name is `kc-cli`; the installed command remains `kc`.
 
-Versioning follows the same single-source pattern as the package build:
+Versioning follows a single-source package pattern:
 
 - The release version lives in `src/kc/__init__.py` as `__version__`.
 - `pyproject.toml` uses Hatch dynamic versioning from that file.
@@ -516,7 +425,7 @@ Versioning follows the same single-source pattern as the package build:
 
 Use Semantic Versioning:
 
-- Patch: bug fixes and documentation changes that preserve the CLI contract.
+- Patch: compatible fixes and documentation changes.
 - Minor: backward-compatible commands, fields, options, schemas, or behavior.
 - Major: breaking changes to command semantics, required envelope fields,
   stable error codes, JSONL schemas, or stored artifact contracts.
@@ -527,25 +436,24 @@ release as `vX.Y.Z`.
 Build and check distributions:
 
 ```bash
-python -m pip install build twine
-python -m build
-twine check dist/*
+uv build
+uvx twine check dist/*
 ```
 
 Upload when ready:
 
 ```bash
-twine upload dist/*
+uvx twine upload dist/*
 ```
 
 Before publishing, verify:
 
 ```bash
-pytest
-ruff check .
-pyright
-kc --version
-kc guide --section compatibility
-kc conformance
-kc lint
+uv run pytest
+uv run ruff check .
+uv run pyright
+uv run kc --version
+uv run kc guide --section compatibility
+uv run kc conformance
+uv run kc lint
 ```
