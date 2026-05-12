@@ -9,15 +9,15 @@ description: Use kc to maintain repo-local knowledge workspaces, ingest local or
 
 ## Operating Rule
 
-Use `kc` as the deterministic harness around knowledge work. Write semantic content yourself, and use `kc` for source registration, retrieval, query answering, context preparation, citation validation, safe apply, task state, linting, and exports.
+Use `kc` as the deterministic harness around knowledge work. Write semantic content yourself, and use `kc` for source registration, retrieval, query answering, context preparation, citation validation, safe apply, task state, linting, and exports. Treat all boundaries and rules in this skill as strict enforcement, not suggestions.
 
-Run commands from the repository root, a subdirectory inside it, or with `kc --root <repo> ...`. Prefer `kc guide --section bootstrap` or `kc guide --section workflows` when you need the current command contract.
+Run commands from the repository root, a subdirectory inside it, or with `kc --root <repo> ...`. Use `kc guide --section bootstrap` or `kc guide --section workflows` when you need the current command contract.
 
 Important boundaries:
 
-- `kc source add` registers local files. For web or API documentation, first save a local source snapshot under `knowledge/raw/<domain>/`.
-- Do not ask `kc` to summarize, classify, judge truth, or generate prose. The agent writes the semantic content.
-- Do not hand-author citation line ranges. Use citation tokens returned by `kc source search`, `kc context prepare`, or `kc artifact validate`.
+1. **Source management:** `kc source add` registers local files. For web or API documentation, first save a local source snapshot under `knowledge/raw/<domain>/`.
+2. **Content generation:** Do not ask `kc` to summarize, classify, judge truth, or generate prose. You (the agent) write all semantic content and documentation-style responses; `kc` is a deterministic retrieval and validation harness only.
+3. **Citations:** Do not hand-author citation line ranges. Use citation tokens returned by `kc source search`, `kc context prepare`, or `kc artifact validate`.
 
 ## Workspace Bootstrap And Diagnostics
 
@@ -38,7 +38,10 @@ kc init --dry-run
 kc init --yes
 ```
 
-Run diagnostics before changing state if paths, indexes, locks, or semantic search behavior look wrong:
+Run diagnostics before changing state following this sequence:
+
+1. Run `kc doctor` when paths, indexes, locks, or semantic search behavior look wrong.
+2. Run `kc lint` when checking citation or knowledge state consistency.
 
 ```bash
 kc doctor
@@ -64,7 +67,7 @@ kc source add docs/policy.md --domain policy --yes
 kc source inspect docs/policy.md --ranges
 ```
 
-3. Gather evidence for the writing task. Prefer search queries that match the exact claim you need to make, and write a durable context pack for longer work:
+3. Gather evidence for the writing task. Use search queries that match the exact claim you need to make, and write a durable context pack for longer work:
 
 ```bash
 kc source search "ownership responsibilities" --domain policy
@@ -133,7 +136,7 @@ kc source search "Codex app worktrees automations" --domain codex --limit 8 | py
 kc context prepare --ask "How do Codex app worktrees work?" --domain codex | python .agents/skills/kc/scripts/resolve_query_citations.py -
 ```
 
-5. Write the final answer as a documentation-style response:
+5. You (the agent) write the final answer as a documentation-style response:
    - Put the direct answer first.
    - Use short headings or bullets only when they improve scanability.
    - Cite material claims inline with Markdown links to original source URLs.
@@ -152,7 +155,7 @@ For remote documentation, API pages, or large source sets:
    - fetched UTC timestamp
    - publisher or owner when known
    - conversion method, if any
-3. Prefer official Markdown or structured exports when available.
+3. Use official Markdown or structured exports when available.
 4. Use HTML conversion only as a fallback. If `markitdown` is available, use it for HTML fallback conversion, then trim site chrome before registration when the converted page starts with navigation noise.
 5. Record a manifest for bulk ingests, including total discovered, downloaded, fallbacks, failures, and post-processing.
 6. Dry-run all source registrations before mutating state. Keep logs under `.kc/logs/` for large batches.
@@ -272,7 +275,8 @@ Keep source registration, source refresh, index builds, artifact apply, citation
 
 - Keep `kc` provider-neutral and local-first; do not add LLM or model-provider behavior to CLI workflows.
 - Use JSON output for automation and integrations.
-- Treat stale-source warnings as blocking for durable knowledge updates unless the user explicitly chooses otherwise.
+- Treat stale-source warnings as blocking for durable knowledge updates unless the user explicitly acknowledges the warning by running `kc source refresh <path> --yes` or by providing written confirmation to proceed.
 - Prefer dry-run before mutation, especially for source refresh and artifact apply.
 - Do not revert or delete existing kc state, snapshots, or logs unless the user explicitly asks.
 - Expect mutating commands to update `knowledge/*.jsonl`, `.kc/state.sqlite`, `.kc/operations/`, `.kc/plans/`, `.kc/snapshots/`, `.kc/context/`, and task files.
+- In multi-user or collaborative environments, avoid concurrent mutations to `knowledge/*.jsonl` or `.kc/state.sqlite`. Coordinate with other users before running `kc source add`, `kc index build`, or `kc artifact apply` when shared state is possible.
