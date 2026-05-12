@@ -12,10 +12,13 @@ Let a human or external agent write the semantic content. Then use `kc` to
 validate citations, preview the change, apply it safely, and keep the knowledge
 workspace searchable.
 
-`kc` does not call an LLM, does not answer questions for you, and does not add a
-model provider dependency to your project. It is the deterministic harness
-around that work: source registration, search, context preparation, citation
-validation, safe apply, task state, and exports.
+The `kc` CLI does not call an LLM, generate semantic content, or add a model
+provider dependency to your project. It is the deterministic harness around
+that work: source registration, hybrid search, context preparation, citation
+validation, safe apply, task state, and exports. `kc init` also writes a
+repo-local `.agents/skills/kc/` skill so external agents can learn the workflow
+and answer knowledge queries from grounded evidence without moving reasoning
+into the CLI.
 
 ## Why use kc?
 
@@ -29,6 +32,9 @@ validation, safe apply, task state, and exports.
   default, with locks and snapshots around artifact application.
 - **Stay local and provider-neutral.** Source data, indexes, artifacts, and task
   state live in the repository. Agents remain external and interchangeable.
+- **Carry the workflow with the repo.** `kc init` installs a managed `$kc` skill
+  that teaches compatible agent runtimes how to query, ingest, cite, validate,
+  and apply project knowledge.
 - **Automate without scraping text output.** Commands emit stable structured
   envelopes by default and expose deterministic next steps.
 
@@ -73,7 +79,7 @@ python -m pip install kc-cli
 
 A typical `kc` workflow has five steps:
 
-1. Initialize a repository-local knowledge workspace.
+1. Initialize a repository-local knowledge workspace and generated agent skill.
 2. Register source files that should ground future knowledge.
 3. Search or prepare context for the question at hand.
 4. Write the artifact yourself or ask an external agent to write it.
@@ -86,6 +92,10 @@ kc --format markdown source search "ownership responsibilities" --domain policy
 kc context prepare --ask "Create an ownership page" --shape knowledge_page --grounding required --target knowledge/wiki/ownership.md
 kc artifact new --type knowledge_page --path knowledge/wiki/ownership.md --title "Ownership" --yes
 ```
+
+The generated `.agents/skills/kc/` skill is optional runtime guidance for
+external agents. It is committed when you want the project itself to carry the
+expected `kc` workflow.
 
 Edit `knowledge/wiki/ownership.md` with citations from `kc source search` or
 `kc context prepare`:
@@ -121,6 +131,8 @@ search and context preparation
         v
 human or external agent writes semantic content
         |
+        |  optional repo-local .agents/skills/kc guidance
+        |
         v
 citation validation, diff, apply, lint, export
 ```
@@ -141,7 +153,7 @@ kc source inspect docs/policy.md --ranges
 ```
 
 **Ranges** are stable citation targets extracted from sources. Search commands
-return ready-to-use citation tokens.
+use default hybrid retrieval and return ready-to-use citation tokens.
 
 ```bash
 kc source search "retention period" --domain policy --limit 5
@@ -175,8 +187,8 @@ kc task resume --task-id task_01HX --event artifact_created --input @event.json
 
 ## Workspace layout
 
-`kc init --yes` creates a Git-friendly durable knowledge directory and local
-runtime state:
+`kc init --yes` creates a Git-friendly durable knowledge directory, a managed
+repo-local agent skill, and local runtime state:
 
 ```text
 repo-root/
@@ -227,13 +239,13 @@ kc --format json guide --section commands
 
 | Command | Purpose |
 | --- | --- |
-| `kc init` | Create the workspace layout, config, stores, and local state. |
+| `kc init` | Create or update the workspace layout, config, stores, managed agent skill, and local state. |
 | `kc source add` | Register a source, fingerprint it, extract ranges, and update indexes. |
 | `kc source inspect` | Show source metadata, fingerprint state, and optional ranges. |
 | `kc source refresh` | Refresh a changed registered source. |
-| `kc source search` | Search registered source ranges and return citation tokens. |
+| `kc source search` | Search registered source ranges with default hybrid retrieval and return citation tokens. |
 | `kc index build` | Rebuild BM25 and semantic search indexes. |
-| `kc context prepare` | Gather evidence and instructions for a writing task. |
+| `kc context prepare` | Gather evidence and instructions for an external writing or answering task. |
 | `kc artifact new` | Create a deterministic artifact skeleton. |
 | `kc artifact validate` | Validate schema, required sections, citations, and provenance. |
 | `kc artifact diff` | Build a structured apply plan before mutation. |
