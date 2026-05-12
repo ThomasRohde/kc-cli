@@ -1,3 +1,5 @@
+* text=auto eol=lf
+
 src/kc/embedding_models/**/*.json text eol=lf
 src/kc/embedding_models/**/*.md text eol=lf
 src/kc/embedding_models/**/*.safetensors binary
