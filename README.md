@@ -472,11 +472,9 @@ uv build
 uvx twine check dist/*
 ```
 
-Upload when ready:
-
-```bash
-uvx twine upload dist/*
-```
+Publishing uses GitHub trusted publishing through `.github/workflows/publish.yml`
+and the protected `pypi` environment. Push a `vX.Y.Z` tag to publish the checked
+distribution artifacts to PyPI.
 
 Before publishing, verify:
 
