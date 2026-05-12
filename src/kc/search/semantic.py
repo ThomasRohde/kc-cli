@@ -21,8 +21,9 @@ from kc.store.sqlite import init_db
 MODEL_PROVIDER = "model2vec"
 BUNDLED_MODEL_NAME = "potion-base-8M"
 EXPECTED_DIMENSION = 256
-EXPECTED_CHECKSUM = "sha256:aef1c5e1fd70060804f5295ec8e9ab3ed62e50e79b208435fb77e15c5bf94bb8"
+EXPECTED_CHECKSUM = "sha256:1630533e875a4725d11a703f48cb9598e59f3cfe3fa0d5a19a54045d52922848"
 SEMANTIC_METADATA_KEY = "semantic_model"
+TEXT_MODEL_SUFFIXES = {".json", ".md"}
 
 
 @dataclass(frozen=True)
@@ -39,13 +40,21 @@ def bundled_model_dir() -> Path:
 def model_directory_checksum(model_dir: Path) -> str:
     root = Path(model_dir)
     digest = hashlib.sha256()
-    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    paths = (path for path in root.rglob("*") if path.is_file())
+    for path in sorted(paths, key=lambda item: item.relative_to(root).as_posix()):
         rel = path.relative_to(root).as_posix().encode("utf-8")
         digest.update(rel)
         digest.update(b"\0")
-        digest.update(path.read_bytes())
+        digest.update(_checksum_file_bytes(path))
         digest.update(b"\0")
     return f"sha256:{digest.hexdigest()}"
+
+
+def _checksum_file_bytes(path: Path) -> bytes:
+    data = path.read_bytes()
+    if path.suffix.lower() in TEXT_MODEL_SUFFIXES:
+        return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return data
 
 
 def _model_unavailable(message: str, **details: Any) -> KcError:

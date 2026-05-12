@@ -48,6 +48,18 @@ def test_model_directory_checksum_is_deterministic() -> None:
     assert semantic.model_directory_checksum(semantic.bundled_model_dir()) == semantic.EXPECTED_CHECKSUM
 
 
+def test_model_directory_checksum_is_platform_canonical(tmp_path: Path) -> None:
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    (model_dir / "README.md").write_bytes(b"# Model\r\n")
+    (model_dir / "config.json").write_bytes(b'{"dim": 256}\r\n')
+    (model_dir / "model.safetensors").write_bytes(b"\r\nbinary\r\n")
+
+    digest = semantic.model_directory_checksum(model_dir)
+
+    assert digest == "sha256:8ba9ea3104fe9fd8a1b745701c287e33893d77c307cba9d96066cfc35d046178"
+
+
 def test_rrf_score_is_deterministic() -> None:
     assert rrf_score([1], k=60) == 1 / 61
     assert rrf_score([1, 3], k=60) == (1 / 61) + (1 / 63)
