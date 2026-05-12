@@ -9,6 +9,9 @@ This project uses Semantic Versioning for the Python package version exposed by
 
 ### Added
 
+- `kc init` now creates and maintains a repo-local `.agents/skills/kc/` skill
+  so external agents can discover the local `kc` workflow, query-answering
+  guidance, remote-ingestion guidance, and original-source citation helper.
 - Release discipline for future changes: update this changelog, bump
   `src/kc/__init__.py::__version__`, run the published verification commands,
   and tag releases as `vX.Y.Z`.

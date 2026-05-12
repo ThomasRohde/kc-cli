@@ -1,18 +1,97 @@
 from __future__ import annotations
 
+from importlib.resources import files
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
 from kc.atomic_write import atomic_write_text
 from kc.commands.common import run, validate_choice
 from kc.config import DEFAULT_CONFIG
-from kc.output import emit_success
+from kc.output import emit_success, warning
 from kc.paths import current_paths, repo_relative
 from kc.store.sqlite import init_db
 
 ALLOWED_PROFILES = {"generic"}
+MANAGED_AGENT_SKILL_MARKER = "kc-managed-agent-skill:v1"
+AGENT_SKILL_DIRS = [
+    Path(".agents"),
+    Path(".agents") / "skills",
+    Path(".agents") / "skills" / "kc",
+    Path(".agents") / "skills" / "kc" / "agents",
+    Path(".agents") / "skills" / "kc" / "scripts",
+]
+AGENT_SKILL_TEMPLATE_FILES = [
+    (("SKILL.md",), Path(".agents") / "skills" / "kc" / "SKILL.md"),
+    (("agents", "openai.yaml"), Path(".agents") / "skills" / "kc" / "agents" / "openai.yaml"),
+    (
+        ("scripts", "resolve_query_citations.py"),
+        Path(".agents") / "skills" / "kc" / "scripts" / "resolve_query_citations.py",
+    ),
+]
+
+
+def _agent_skill_templates() -> dict[Path, str]:
+    template_root = files("kc").joinpath("templates", "agents", "skills", "kc")
+    return {
+        target: template_root.joinpath(*template_path).read_text(encoding="utf-8")
+        for template_path, target in AGENT_SKILL_TEMPLATE_FILES
+    }
+
+
+def _handle_managed_file(
+    path: Path,
+    content: str,
+    *,
+    effective_dry_run: bool,
+    created: list[str],
+    updated: list[str],
+    noop: list[str],
+    planned: list[str],
+    warnings: list[dict[str, Any]],
+) -> None:
+    rel = repo_relative(path)
+    if not path.exists():
+        if effective_dry_run:
+            planned.append(rel)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(path, content)
+            created.append(rel)
+        return
+
+    if not path.is_file():
+        noop.append(rel)
+        warnings.append(
+            warning(
+                "KC_INIT_AGENT_SKILL_CUSTOM",
+                "Existing agent skill path is not a managed file; preserved without overwrite.",
+                {"path": rel},
+            )
+        )
+        return
+
+    current = path.read_text(encoding="utf-8")
+    if current == content:
+        noop.append(rel)
+        return
+    if MANAGED_AGENT_SKILL_MARKER in current:
+        if effective_dry_run:
+            planned.append(rel)
+        else:
+            atomic_write_text(path, content)
+            updated.append(rel)
+        return
+
+    noop.append(rel)
+    warnings.append(
+        warning(
+            "KC_INIT_AGENT_SKILL_CUSTOM",
+            "Existing agent skill file is not kc-managed; preserved without overwrite.",
+            {"path": rel},
+        )
+    )
 
 
 def register(app: typer.Typer) -> None:
@@ -38,6 +117,7 @@ def register(app: typer.Typer) -> None:
                 paths.data_dir / "schemas",
                 paths.data_dir / "evals",
                 paths.data_dir / "exports",
+                *[paths.root / path for path in AGENT_SKILL_DIRS],
                 paths.state_dir,
                 paths.locks_dir,
                 paths.snapshots_dir,
@@ -58,6 +138,8 @@ def register(app: typer.Typer) -> None:
             created: list[str] = []
             noop: list[str] = []
             planned: list[str] = []
+            updated: list[str] = []
+            warnings: list[dict[str, Any]] = []
             for d in dirs:
                 rel = repo_relative(d)
                 if d.exists():
@@ -77,6 +159,17 @@ def register(app: typer.Typer) -> None:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     atomic_write_text(path, content)
                     created.append(rel)
+            for rel_path, content in _agent_skill_templates().items():
+                _handle_managed_file(
+                    paths.root / rel_path,
+                    content,
+                    effective_dry_run=effective_dry_run,
+                    created=created,
+                    updated=updated,
+                    noop=noop,
+                    planned=planned,
+                    warnings=warnings,
+                )
             sqlite_rel = repo_relative(paths.sqlite_path)
             if paths.sqlite_path.exists():
                 noop.append(sqlite_rel)
@@ -91,9 +184,11 @@ def register(app: typer.Typer) -> None:
                     "dry_run": effective_dry_run,
                     "profile": profile,
                     "created": created,
+                    "updated": updated,
                     "planned": planned,
                     "noop": sorted(set(noop)),
                 },
+                warnings=warnings,
             )
 
         run("init", _run)

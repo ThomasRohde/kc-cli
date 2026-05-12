@@ -363,6 +363,7 @@ def _init_summary(payload: dict[str, Any]) -> Summary:
             ("dry_run", result.get("dry_run")),
             ("profile", result.get("profile")),
             ("created", _count(result.get("created"))),
+            ("updated", _count(result.get("updated"))),
             ("planned", _count(result.get("planned"))),
             ("noop", _count(result.get("noop"))),
         ],

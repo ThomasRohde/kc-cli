@@ -58,7 +58,7 @@
           "--dry-run",
           "--yes"
         ],
-        "result_summary": "Planned, created, and existing repository layout paths.",
+        "result_summary": "Planned, created, updated, and existing repository layout paths.",
         "examples": [
           "kc init --dry-run",
           "kc init --yes"

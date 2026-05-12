@@ -71,6 +71,10 @@ def test_init_dry_run_creates_nothing(tmp_path: Path, monkeypatch) -> None:
     assert payload["result"]["dry_run"] is True
     assert not (tmp_path / "kc.toml").exists()
     assert not (tmp_path / "knowledge").exists()
+    assert not (tmp_path / ".agents").exists()
+    assert ".agents/skills/kc/SKILL.md" in payload["result"]["planned"]
+    assert ".agents/skills/kc/agents/openai.yaml" in payload["result"]["planned"]
+    assert ".agents/skills/kc/scripts/resolve_query_citations.py" in payload["result"]["planned"]
 
 
 def test_init_yes_creates_repo_layout(tmp_path: Path, monkeypatch) -> None:
@@ -82,6 +86,47 @@ def test_init_yes_creates_repo_layout(tmp_path: Path, monkeypatch) -> None:
     assert (tmp_path / "kc.toml").exists()
     assert (tmp_path / "knowledge" / "sources.jsonl").exists()
     assert (tmp_path / ".kc" / "state.sqlite").exists()
+    assert (tmp_path / ".agents" / "skills" / "kc" / "SKILL.md").exists()
+    assert (tmp_path / ".agents" / "skills" / "kc" / "agents" / "openai.yaml").exists()
+    assert (tmp_path / ".agents" / "skills" / "kc" / "scripts" / "resolve_query_citations.py").exists()
+    assert ".agents/skills/kc/SKILL.md" in payload["result"]["created"]
+    assert ".agents/skills/kc/agents/openai.yaml" in payload["result"]["created"]
+    assert ".agents/skills/kc/scripts/resolve_query_citations.py" in payload["result"]["created"]
+    assert payload["result"]["updated"] == []
+
+
+def test_init_updates_managed_agent_skill_files(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert runner.invoke(app, ["init", "--yes"]).exit_code == 0
+    skill = tmp_path / ".agents" / "skills" / "kc" / "SKILL.md"
+    script = tmp_path / ".agents" / "skills" / "kc" / "scripts" / "resolve_query_citations.py"
+    skill.write_text("<!-- kc-managed-agent-skill:v1 -->\n# stale\n", encoding="utf-8")
+    script.write_text("# kc-managed-agent-skill:v1\nprint('stale')\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["init", "--yes"])
+
+    assert result.exit_code == 0
+    payload = parse(result.output)
+    assert ".agents/skills/kc/SKILL.md" in payload["result"]["updated"]
+    assert ".agents/skills/kc/scripts/resolve_query_citations.py" in payload["result"]["updated"]
+    assert "# stale" not in skill.read_text(encoding="utf-8")
+    assert "answer natural-language queries with grounded citations" in skill.read_text(encoding="utf-8")
+    assert "Resolve kc source search results to original source URLs." in script.read_text(encoding="utf-8")
+
+
+def test_init_preserves_custom_agent_skill_files(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    skill = tmp_path / ".agents" / "skills" / "kc" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("# Custom kc skill\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["init", "--yes"])
+
+    assert result.exit_code == 0
+    payload = parse(result.output)
+    assert skill.read_text(encoding="utf-8") == "# Custom kc skill\n"
+    assert ".agents/skills/kc/SKILL.md" in payload["result"]["noop"]
+    assert "KC_INIT_AGENT_SKILL_CUSTOM" in {item["code"] for item in payload["warnings"]}
 
 
 def test_invalid_format_returns_structured_error() -> None:
@@ -336,7 +381,10 @@ def test_init_idempotency_and_profile_validation(tmp_path: Path, monkeypatch) ->
     assert second.exit_code == 0
     payload = parse(second.output)
     assert ".kc/state.sqlite" in payload["result"]["noop"]
+    assert ".agents/skills/kc/SKILL.md" in payload["result"]["noop"]
+    assert ".agents/skills/kc/scripts/resolve_query_citations.py" in payload["result"]["noop"]
     assert ".kc/state.sqlite" not in payload["result"]["created"]
+    assert payload["result"]["updated"] == []
 
     bad = runner.invoke(app, ["init", "--profile", "xyz123", "--dry-run"])
     assert bad.exit_code == 10

@@ -262,7 +262,7 @@ def _commands() -> dict[str, Any]:
             mutates=True,
             confirmation="dry-run unless --yes",
             important_options=["--profile", "--dry-run", "--yes"],
-            result_summary="Planned, created, and existing repository layout paths.",
+            result_summary="Planned, created, updated, and existing repository layout paths.",
             examples=["kc init --dry-run", "kc init --yes"],
             common_errors=["KC_VALIDATION_INVALID_ARGUMENT", "KC_PATH_OUTSIDE_REPO", "KC_CONFIG_INVALID"],
             exit_codes=[0, 10],

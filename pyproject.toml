@@ -51,6 +51,7 @@ packages = ["src/kc"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/kc/embedding_models" = "kc/embedding_models"
+"src/kc/templates" = "kc/templates"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

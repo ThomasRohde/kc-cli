@@ -191,6 +191,14 @@ repo-root/
     schemas/
     evals/
     exports/
+  .agents/
+    skills/
+      kc/
+        SKILL.md
+        agents/
+          openai.yaml
+        scripts/
+          resolve_query_citations.py
   .kc/
     state.sqlite
     locks/
@@ -200,8 +208,9 @@ repo-root/
     cache/
 ```
 
-Commit `knowledge/` when it is part of the project record. Keep `.kc/` local
-unless you have a specific reason to share runtime state.
+Commit `knowledge/` and `.agents/` when they are part of the project record.
+The `.agents/skills/kc/` skill gives external agents the local `kc` workflow.
+Keep `.kc/` local unless you have a specific reason to share runtime state.
 
 ## Common commands
 

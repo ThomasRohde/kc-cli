@@ -1,0 +1,5 @@
+# kc-managed-agent-skill:v1
+interface:
+  display_name: "kc Knowledge"
+  short_description: "Query, ingest, and validate grounded knowledge"
+  default_prompt: "Use $kc to answer knowledge queries with original-source citations, ingest sources, prepare grounded context, and validate cited artifacts."
