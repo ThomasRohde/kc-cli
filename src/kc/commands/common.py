@@ -15,8 +15,9 @@ from kc.models.artifact import ArtifactRecord
 from kc.models.citation import CitationEdgeRecord
 from kc.models.source import SourceRecord
 from kc.models.source_range import SourceRangeRecord
+from kc.models.source_revision import SourceRevisionRecord
 from kc.output import emit_error, emit_unexpected, state
-from kc.paths import current_paths, ensure_data_dir_exists, repo_relative
+from kc.paths import current_paths, ensure_data_dir_exists, repo_relative, resolve_repo_path
 from kc.store.jsonl import read_jsonl, write_jsonl
 
 
@@ -169,6 +170,15 @@ def save_ranges(records: list[SourceRangeRecord]) -> None:
     write_jsonl(current_paths().ranges_jsonl, records)
 
 
+def load_source_revisions() -> list[SourceRevisionRecord]:
+    ensure_data_dir_exists()
+    return read_jsonl(current_paths().source_revisions_jsonl, SourceRevisionRecord)
+
+
+def save_source_revisions(records: list[SourceRevisionRecord]) -> None:
+    write_jsonl(current_paths().source_revisions_jsonl, records)
+
+
 def load_artifacts() -> list[ArtifactRecord]:
     ensure_data_dir_exists()
     return read_jsonl(current_paths().artifacts_jsonl, ArtifactRecord)
@@ -309,7 +319,7 @@ def stale_source_warnings(
         original = source.metadata.get("original_path")
         current_fingerprint = None
         if isinstance(original, str):
-            path = Path.cwd() / original
+            path = resolve_repo_path(original)
             current_fingerprint = raw_fingerprint(path) if path.exists() else None
         current_by_source[source_id] = current_fingerprint
         if current_fingerprint != source.fingerprint:

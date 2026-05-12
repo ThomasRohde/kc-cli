@@ -18,10 +18,12 @@ class SourceRangeRecord(BaseModel):
     schema_version: Literal["kc.source_range.v1"] = "kc.source_range.v1"
     range_id: str
     source_id: str
+    revision_id: str | None = None
     source_fingerprint: str
     locator: Locator
     text_hash: str
     excerpt: str
     tokens_estimate: int = 0
     extracted_at: str
+    status: Literal["active", "superseded"] = "active"
     metadata: dict[str, Any] = Field(default_factory=dict)

@@ -111,8 +111,15 @@ def load_config(root: Path | None = None, *, required: bool = False) -> KcConfig
             message=f"Invalid kc.toml: {exc}",
             details={"path": str(path)},
         ) from exc
+    schema_version = str(data.get("schema_version", "kc.config.v1"))
+    if schema_version != "kc.config.v1":
+        raise KcError(
+            code="KC_CONFIG_INVALID",
+            message=f"Unsupported kc.toml schema_version: {schema_version}",
+            details={"path": str(path), "schema_version": schema_version, "supported": ["kc.config.v1"]},
+        )
     return KcConfig(
-        schema_version=str(data.get("schema_version", "kc.config.v1")),
+        schema_version=schema_version,
         project_id=str(data.get("project_id", "kc-project")),
         data_dir=str(data.get("data_dir", "knowledge")),
         state_dir=str(data.get("state_dir", ".kc")),

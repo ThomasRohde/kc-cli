@@ -89,7 +89,7 @@ A typical `kc` workflow has five steps:
 kc init --yes
 kc source add docs/policy.md --domain policy --yes
 kc --format markdown source search "ownership responsibilities" --domain policy
-kc context prepare --ask "Create an ownership page" --shape knowledge_page --grounding required --target knowledge/wiki/ownership.md
+kc context prepare --ask "Create an ownership page" --shape knowledge_page --grounding required --target knowledge/wiki/ownership.md --out .kc/context/ownership.json
 kc artifact new --type knowledge_page --path knowledge/wiki/ownership.md --title "Ownership" --yes
 ```
 
@@ -101,7 +101,7 @@ Edit `knowledge/wiki/ownership.md` with citations from `kc source search` or
 `kc context prepare`:
 
 ```markdown
-The policy owner reviews the document every quarter. [kc:src_01HX...:L12-L18]
+The policy owner reviews the document every quarter. [kc:src_01HX...:rng_01HX...:L12-L18]
 ```
 
 Then check and apply the result:
@@ -152,8 +152,9 @@ kc source add docs/policy.md --domain policy --yes
 kc source inspect docs/policy.md --ranges
 ```
 
-**Ranges** are stable citation targets extracted from sources. Search commands
-use default hybrid retrieval and return ready-to-use citation tokens.
+**Ranges** are stable citation targets extracted from source revisions. Search
+commands use default hybrid retrieval and return ready-to-use v2 citation
+tokens with source and range IDs, plus legacy locator tokens for migration.
 
 ```bash
 kc source search "retention period" --domain policy --limit 5
@@ -164,7 +165,7 @@ gathers relevant ranges, policies, artifact matches, and next commands without
 answering the question.
 
 ```bash
-kc context prepare --ask "Summarize retention obligations" --shape knowledge_page --grounding required
+kc context prepare --ask "Summarize retention obligations" --shape knowledge_page --grounding required --out .kc/context/retention.json
 ```
 
 **Artifacts** are durable outputs such as Markdown knowledge pages or typed
@@ -195,6 +196,7 @@ repo-root/
   kc.toml
   knowledge/
     sources.jsonl
+    source_revisions.jsonl
     source_ranges.jsonl
     artifacts.jsonl
     citation_edges.jsonl
@@ -214,6 +216,8 @@ repo-root/
   .kc/
     state.sqlite
     locks/
+    operations/
+    context/
     snapshots/
     plans/
     tasks/
@@ -240,6 +244,7 @@ kc --format json guide --section commands
 | Command | Purpose |
 | --- | --- |
 | `kc init` | Create or update the workspace layout, config, stores, managed agent skill, and local state. |
+| `kc status` | Show workspace status, counts, index health, and next commands. |
 | `kc source add` | Register a source, fingerprint it, extract ranges, and update indexes. |
 | `kc source inspect` | Show source metadata, fingerprint state, and optional ranges. |
 | `kc source refresh` | Refresh a changed registered source. |
@@ -251,9 +256,10 @@ kc --format json guide --section commands
 | `kc artifact diff` | Build a structured apply plan before mutation. |
 | `kc artifact apply` | Validate, lock, snapshot, register, and apply an artifact. |
 | `kc citation check` | Check citation tokens and provenance for one or all artifacts. |
+| `kc citation rewrite/repair` | Rewrite legacy locator tokens or report deterministic repair candidates. |
 | `kc lint` | Run repository integrity checks. |
-| `kc task start/status/inspect/resume` | Track longer-running agent workflows. |
-| `kc eval run` | Run deterministic retrieval eval packs. |
+| `kc task start/status/inspect/next/resume` | Track longer-running agent workflows. |
+| `kc eval run` | Run deterministic retrieval eval packs with recall and MRR metrics. |
 | `kc export` | Export registered knowledge as JSONL, Markdown bundle, or `llms.txt`. |
 | `kc doctor` | Inspect config, state, locks, and semantic index health. |
 | `kc conformance` | Run read-only CLI contract checks. |
@@ -264,9 +270,14 @@ Markdown artifacts use parseable citation tokens:
 
 | Token | Meaning |
 | --- | --- |
-| `[kc:src_<id>:L<start>-L<end>]` | Cite a source line range. |
-| `[kc:src_<id>:JP:<percent-encoded-json-pointer>]` | Cite a JSON/YAML/TOML pointer range. |
-| `[kc:src_<id>:CSV:R<start>-R<end>]` | Cite CSV rows. |
+| `[kc:src_<id>:rng_<id>]` | Cite an extracted source range by stable range ID. |
+| `[kc:src_<id>:rng_<id>:L<start>-L<end>]` | Cite a source line range with human locator context. |
+| `[kc:src_<id>:rng_<id>:JP:<percent-encoded-json-pointer>]` | Cite a JSON/YAML/TOML pointer range. |
+| `[kc:src_<id>:rng_<id>:CSV:R<start>-R<end>]` | Cite CSV rows. |
+
+Legacy locator-only tokens remain parseable during migration. Prefer
+`kc citation rewrite --file <artifact> --dry-run` and then `--yes` to convert
+them to range-aware v2 tokens.
 
 Special markers make intent explicit:
 

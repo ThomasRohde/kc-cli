@@ -38,6 +38,8 @@ class CitationEdgeRecord(BaseModel):
 class ParsedCitation(BaseModel):
     token: str
     source_id: str
+    range_id: str | None = None
+    token_version: Literal["v1", "v2"] = "v1"
     kind: Literal["line_range", "json_pointer", "csv_row_range"]
     line: int
     start_line: int | None = None

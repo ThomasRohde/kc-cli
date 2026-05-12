@@ -115,6 +115,25 @@ def test_semantic_model_checksum_mismatch_fails(tmp_path: Path, monkeypatch) -> 
     semantic.load_semantic_model.cache_clear()
 
 
+def test_source_search_falls_back_to_fts_when_semantic_unavailable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    init_repo(tmp_path, monkeypatch)
+    add_policy_source(tmp_path)
+    semantic.load_semantic_model.cache_clear()
+    monkeypatch.setattr(semantic, "EXPECTED_CHECKSUM", "sha256:not-the-bundled-model")
+
+    result = runner.invoke(app, ["source", "search", "owners lifecycle", "--domain", "bcm"])
+
+    assert result.exit_code == 0
+    payload = parse(result.output)
+    assert payload["result"]["mode"] == "fts_fallback"
+    assert payload["result"]["results"]
+    assert payload["result"]["results"][0]["scores"]["semantic_rank"] is None
+    assert "KC_RETRIEVAL_SEMANTIC_UNAVAILABLE" in {item["code"] for item in payload["warnings"]}
+    semantic.load_semantic_model.cache_clear()
+
+
 def test_removed_retrieval_options_are_usage_errors(tmp_path: Path, monkeypatch) -> None:
     init_repo(tmp_path, monkeypatch)
     add_policy_source(tmp_path)

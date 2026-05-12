@@ -425,6 +425,28 @@ def test_artifact_apply_plan_rejects_changed_artifact(
     assert parse(apply.output)["errors"][0]["code"] == "KC_PLAN_PRECONDITION_FAILED"
 
 
+def test_artifact_diff_uses_last_applied_snapshot(tmp_path: Path, monkeypatch) -> None:
+    hit = setup_repo_with_source(tmp_path, monkeypatch)
+    artifact = write_valid_artifact(tmp_path, hit["citation_token"])
+    rel = str(artifact.relative_to(tmp_path))
+    assert runner.invoke(app, ["artifact", "apply", "--file", rel, "--yes"]).exit_code == 0
+    artifact.write_text(
+        artifact.read_text(encoding="utf-8").replace(
+            "Capability owners maintain definitions.",
+            "Capability owners maintain definitions and stewardship.",
+        ),
+        encoding="utf-8",
+    )
+
+    diff = runner.invoke(app, ["artifact", "diff", "--file", rel])
+
+    assert diff.exit_code == 0
+    payload = parse(diff.output)
+    assert payload["result"]["baseline"]["kind"] == "last_applied_snapshot"
+    assert "-Capability owners maintain definitions." in payload["result"]["diff"]
+    assert "+Capability owners maintain definitions and stewardship." in payload["result"]["diff"]
+
+
 def test_source_refresh_impacts_old_citation_tokens(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -444,3 +466,50 @@ def test_source_refresh_impacts_old_citation_tokens(
     validate = runner.invoke(app, ["artifact", "validate", "--file", rel])
     assert validate.exit_code == 20
     assert parse(validate.output)["errors"][0]["code"] == "KC_CITATION_RANGE_MISSING"
+
+
+def test_source_refresh_detects_same_locator_changed_text(
+    tmp_path: Path, monkeypatch
+) -> None:
+    hit = setup_repo_with_source(tmp_path, monkeypatch)
+    assert "rng_" in hit["citation_token"]
+    assert hit["legacy_citation_token"].startswith("[kc:src_")
+    artifact = write_valid_artifact(tmp_path, hit["legacy_citation_token"])
+    rel = str(artifact.relative_to(tmp_path))
+    assert runner.invoke(app, ["artifact", "apply", "--file", rel, "--yes"]).exit_code == 0
+
+    (tmp_path / "policy.md").write_text(
+        "# Ownership\n\nCapability stewards maintain different definitions and lifecycle state.\n",
+        encoding="utf-8",
+    )
+    refresh = runner.invoke(app, ["source", "refresh", "policy.md", "--yes"])
+    assert refresh.exit_code == 0
+    impacts = parse(refresh.output)["result"]["impacted_artifacts"]
+    assert impacts
+    assert impacts[0]["reason"] == "range_content_changed_at_locator"
+
+    validate = runner.invoke(app, ["artifact", "validate", "--file", rel])
+    assert validate.exit_code == 20
+    assert "KC_CITATION_STALE_SOURCE" in {
+        error["code"] for error in parse(validate.output)["errors"]
+    }
+
+
+def test_v2_citation_tokens_validate_and_rewrite_legacy_tokens(
+    tmp_path: Path, monkeypatch
+) -> None:
+    hit = setup_repo_with_source(tmp_path, monkeypatch)
+    assert hit["citation_token"].startswith(f"[kc:{hit['source_id']}:{hit['range_id']}:")
+    artifact = write_valid_artifact(tmp_path, hit["legacy_citation_token"])
+    rel = str(artifact.relative_to(tmp_path))
+
+    rewrite = runner.invoke(app, ["citation", "rewrite", "--file", rel, "--yes"])
+    assert rewrite.exit_code == 0
+    rewrite_payload = parse(rewrite.output)
+    assert rewrite_payload["result"]["rewritten"] == 2
+    assert hit["citation_token"] in artifact.read_text(encoding="utf-8")
+
+    validate = runner.invoke(app, ["artifact", "validate", "--file", rel])
+    assert validate.exit_code == 0
+    edge = parse(validate.output)["result"]["citation_edges"][0]
+    assert edge["range_id"] == hit["range_id"]

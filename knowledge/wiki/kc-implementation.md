@@ -7,119 +7,36 @@ domain:
   - kc
 artifact_type: knowledge_page
 requires_citations: true
-source_refs:
-  - source_id: src_01KR89M77M0SR209C87M6RKAY2
-    ranges: []
-  - source_id: src_01KR8GDB389BYFVFP2E09YMTD9
-    ranges: []
-  - source_id: src_01KR8GD8FTQ0BZXKM91NPZ4BC9
-    ranges: []
-  - source_id: src_01KR8GD8XVCEYBW80M2SKVZVKS
-    ranges: []
-  - source_id: src_01KR8GD9T9JFNPC5R9WMBHWXCH
-    ranges: []
-  - source_id: src_01KR8GDA7V19F05T6R93ZAWZ35
-    ranges: []
-  - source_id: src_01KR8Q43CZJXAM4ACWW4Y7GWT1
-    ranges: []
-  - source_id: src_01KR8Q47XCTWN53DZJ3BE8PD88
-    ranges: []
-  - source_id: src_01KR8W45S5XX5M0XE6SA23EHK1
-    ranges: []
-  - source_id: src_01KR8W45SSBZB8AA4FNSHZZFCQ
-    ranges: []
-  - source_id: src_01KR8W4S76SRDQKJDQ700PDTGG
-    ranges: []
-  - source_id: src_01KR8W7A30Q9G8RF9CYP7P7TCF
-    ranges: []
-  - source_id: src_01KR90ZDMFJ36C9QP9END5F46W
-    ranges: []
-  - source_id: src_01KR90ZGMHFEFNST5FRX05AER0
-    ranges: []
-  - source_id: src_01KR93G4RJRP13TTXQX28SKF85
-    ranges: []
-  - source_id: src_01KR93G5MN8R7Q1PCGH7RB4Y00
-    ranges: []
-  - source_id: src_01KR93G6FG1161NN4Z6Z2NVXBW
-    ranges: []
-  - source_id: src_01KR93G7B0GP8C5J7WTECXA6NN
-    ranges: []
-  - source_id: src_01KR93G85YFT0HVHVM8C8XAKRW
-    ranges: []
-  - source_id: src_01KR93G91G16H3XQ8MHQ13NXJM
-    ranges: []
-  - source_id: src_01KR93G9W8C0NF3PE57GAV813F
-    ranges: []
-  - source_id: src_01KR93GAQK523QMTD7E1FH7RPF
-    ranges: []
-  - source_id: src_90D0AC3379D12836F586472A7D
-    ranges: []
-  - source_id: src_A3CBFE85BE1E938A3881D3498B
-    ranges: []
-  - source_id: src_D1DAAEE984DBDAA5CE1993D0D1
-    ranges: []
-  - source_id: src_9405FC69F97131789713475CFC
-    ranges: []
-  - source_id: src_CA300356A8703AE94ACE629B8A
-    ranges: []
-  - source_id: src_9F5299B94F508840AAB5A9A19B
-    ranges: []
-  - source_id: src_AE85F8EDD94C03FD66CF2FE13D
-    ranges: []
-  - source_id: src_CCBDF433DC72CF207BC924636B
-    ranges: []
-  - source_id: src_21D68E95E8C70C3E493EDF5AF4
-    ranges: []
-  - source_id: src_C9A5F720414316E2A8340E3007
-    ranges: []
-  - source_id: src_9370460952EBB895BD9D56459D
-    ranges: []
-  - source_id: src_837F32D81784FCD19A4B1940FE
-    ranges: []
-  - source_id: src_45BE1182C784C25E06041CA5DD
-    ranges: []
+source_refs: []
+last_validated_at: null
 ---
 
 # kc Implementation Notes
 
 ## Summary
 
-`kc-cli` keeps the v1 local-first harness boundary: source registration, retrieval, context preparation, artifact validation, safe apply, and task state are deterministic CLI responsibilities, while external agents remain responsible for semantic authoring. [kc:src_01KR89M77M0SR209C87M6RKAY2:L2210-L2213] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2462-L2468] The 2026-05-11 black-box feedback pass tightened command-contract behavior around structured usage errors, invalid arguments, missing workspace state, stale-source warnings, artifact warnings, task resume payload validation, and guide/readme documentation without adding provider or generative reasoning dependencies. [kc:inference] A subsequent 2026-05-11 versioning pass added an `archguard`-style single-source release regime with changelog discipline, SemVer rules, and tests for version-surface drift. [kc:src_AE85F8EDD94C03FD66CF2FE13D:L42-L42] [kc:src_AE85F8EDD94C03FD66CF2FE13D:L44-L49] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L47-L52] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L54-L56] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L59-L62] The 0.2.0 retrieval pass made hybrid BM25-plus-semantic retrieval the default for search and context preparation, made `kc index build` rebuild semantic embeddings by default, and removed the public retrieval-selection switches. [kc:src_C9A5F720414316E2A8340E3007:L5-L5] [kc:src_CCBDF433DC72CF207BC924636B:L23-L25] [kc:src_CCBDF433DC72CF207BC924636B:L29-L30] A later init pass added a repo-local `kc` agent skill and now ships the tested skill tree, including query-answering guidance, remote-ingestion guidance, OpenAI metadata, and an original-source citation helper script, while preserving the CLI boundary. [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L16-L32] [kc:src_9370460952EBB895BD9D56459D:L1-L4] [kc:src_9370460952EBB895BD9D56459D:L58-L58] [kc:src_9370460952EBB895BD9D56459D:L94-L94] [kc:src_837F32D81784FCD19A4B1940FE:JP:/interface/default_prompt] [kc:src_45BE1182C784C25E06041CA5DD:L1-L3] [kc:src_45BE1182C784C25E06041CA5DD:L5-L8]
+`kc-cli` remains a deterministic, local-first knowledge compiler harness: the CLI owns source registration, retrieval, context preparation, citation validation, safe artifact apply, task state, and exports while external humans or agents write semantic content. [kc:src_619C5839E8A4DA088B64AC3D50:rng_E8A35DE72086B3A8719396C078:L606-L611] [kc:inference]
 
-## Source-Backed Facts
+The remediation introduced workspace discovery, revision-aware source ranges, v2 range citation tokens, repo-level mutation transactions, FTS fallback, durable context packs, a state-specific task loop, snapshot-backed artifact diffs, eval metrics, and refreshed agent-facing contracts. [kc:src_619C5839E8A4DA088B64AC3D50:rng_179AF0FA7C1A65BF79E4C02BD4:L1565-L1570] [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_19C8F55C36090BBB34A50082E4:L79-L81] [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_192707A184A59B59159A972AB3:L109-L111]
 
-- Error definitions now distinguish process usage failures from domain validation failures: `EXIT_USAGE` is `2`, `KC_USAGE_ERROR` maps to usage failures, and `KC_VALIDATION_INVALID_ARGUMENT` remains a validation error. [kc:src_01KR90ZDMFJ36C9QP9END5F46W:L25-L48]
-- The CLI group catches Click usage errors, initializes output state, infers the command id when possible, and emits a structured `KC_USAGE_ERROR` envelope; invalid global `--format` values emit `KC_VALIDATION_INVALID_ARGUMENT` before normal command dispatch. [kc:src_01KR8W45S5XX5M0XE6SA23EHK1:L85-L108] [kc:src_01KR8W45S5XX5M0XE6SA23EHK1:L109-L116] [kc:src_01KR8W45S5XX5M0XE6SA23EHK1:L240-L250]
-- Shared command helpers now centralize choice validation, positive integer validation, named integer parsing for `context prepare --budget`, lint check parsing, JSON payload schema validation, data-store loading guards, and stale-source warning assembly. [kc:src_90D0AC3379D12836F586472A7D:L48-L64] [kc:src_90D0AC3379D12836F586472A7D:L67-L74] [kc:src_90D0AC3379D12836F586472A7D:L77-L100] [kc:src_90D0AC3379D12836F586472A7D:L101-L124] [kc:src_90D0AC3379D12836F586472A7D:L125-L131] [kc:src_90D0AC3379D12836F586472A7D:L236-L259] [kc:src_90D0AC3379D12836F586472A7D:L296-L319]
-- Storage-facing command helpers call `ensure_data_dir_exists()` before loading JSONL stores, so commands tolerate a missing `.kc` directory; the path helper creates the configured data directory and returns its path. [kc:src_90D0AC3379D12836F586472A7D:L154-L156] [kc:src_90D0AC3379D12836F586472A7D:L163-L165] [kc:src_90D0AC3379D12836F586472A7D:L172-L174] [kc:src_90D0AC3379D12836F586472A7D:L181-L183] [kc:src_A3CBFE85BE1E938A3881D3498B:L76-L84]
-- `artifact new` validates artifact type and status, `artifact validate` returns warnings as well as errors, draft TODO markers are reported with `KC_ARTIFACT_TODO_MARKERS`, and artifact apply carries validation warnings into dry-run and apply results. [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L598-L617] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L334-L357]
-- `artifact diff` validates `--against` and reports missing artifact files with `KC_ARTIFACT_NOT_FOUND`, while artifact plan loading reports missing plan files with `KC_FILE_NOT_FOUND`. [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L334-L357] [kc:src_01KR8Q43CZJXAM4ACWW4Y7GWT1:L598-L617]
-- `init` accepts only the `generic` profile, creates the durable knowledge/state layout plus `.agents/skills/kc/`, and treats existing paths including `.kc/state.sqlite` as successful noops rather than fatal initialization errors. [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L16-L32] [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L97-L120] [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L145-L168] [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L169-L192]
-- The init-created agent skill templates are read from `kc/templates/agents/skills/kc`, generated files with the `kc-managed-agent-skill:v1` marker are updated, exact matches become noops, and unmarked custom files are preserved with `KC_INIT_AGENT_SKILL_CUSTOM` warnings. [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L16-L32] [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L35-L40] [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L75-L85] [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L87-L94]
-- The `init` result now exposes an additive `updated` list, the human renderer includes an `updated` count, and `kc guide` describes init output as planned, created, updated, and existing layout paths. [kc:src_D1DAAEE984DBDAA5CE1993D0D1:L169-L192] [kc:src_01KR8W45SSBZB8AA4FNSHZZFCQ:L357-L370] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L262-L285]
-- The generated `kc` skill tells agents to write semantic content themselves while using `kc` for source registration, retrieval, query answering, context preparation, citation validation, safe apply, task state, linting, and exports; it now includes query-answering rules, remote or bulk source-ingestion rules, and guidance to resolve citations to original source URLs before responding. [kc:src_9370460952EBB895BD9D56459D:L1-L4] [kc:src_9370460952EBB895BD9D56459D:L12-L12] [kc:src_9370460952EBB895BD9D56459D:L77-L77] [kc:src_9370460952EBB895BD9D56459D:L85-L90] [kc:src_9370460952EBB895BD9D56459D:L98-L108]
-- The generated OpenAI metadata surfaces the `kc Knowledge` display name and a `$kc` default prompt for answering knowledge queries with original-source citations, ingesting sources, preparing grounded context, and validating cited artifacts. [kc:src_837F32D81784FCD19A4B1940FE:JP:/interface/display_name] [kc:src_837F32D81784FCD19A4B1940FE:JP:/interface/default_prompt]
-- The generated helper script reads kc JSON search output, resolves registered source records and snapshot metadata headers, and prints compact JSON records with display names, line ranges, original URLs, local snapshots, citation tokens, and excerpts. [kc:src_45BE1182C784C25E06041CA5DD:L1-L3] [kc:src_45BE1182C784C25E06041CA5DD:L5-L8] [kc:src_45BE1182C784C25E06041CA5DD:L34-L43] [kc:src_45BE1182C784C25E06041CA5DD:L110-L122]
-- The README now documents `.agents/skills/kc/` plus `scripts/resolve_query_citations.py` in the workspace layout and says `.agents/` may be committed as project record while `.kc/` remains local; the changelog records the init-created agent skill, query-answering guidance, remote-ingestion guidance, and original-source citation helper under `[Unreleased]`. [kc:src_9F5299B94F508840AAB5A9A19B:L193-L216] [kc:src_9F5299B94F508840AAB5A9A19B:L223-L225] [kc:src_CCBDF433DC72CF207BC924636B:L12-L17]
-- `source add` reports `KC_SOURCE_NO_RANGES` when extraction produces no ranges, duplicate source detection points callers at `kc source refresh <source_id> --dry-run`, and applied source registration now rebuilds both the SQLite search index and semantic embeddings. [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L165-L188]
-- `source refresh --yes` replaces ranges, rebuilds the SQLite index, rebuilds semantic embeddings, and reports `semantic_index_rebuilt`; `source search` exposes hybrid retrieval without a retrieval-mode option and returns `mode: "hybrid"` in the result and target payload. [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L290-L298] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L300-L319] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L324-L333] [kc:src_01KR8GD9T9JFNPC5R9WMBHWXCH:L335-L351]
-- `context prepare` no longer exposes retrieval mode selection; it validates grounding and budget input, calls the shared hybrid `search_ranges` path with the configured RRF constant, emits `mode: "hybrid"`, and still attaches stale-source warnings via the shared warning helper. [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L29-L52] [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L53-L76] [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L77-L100] [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L101-L124] [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:L125-L126] [kc:src_90D0AC3379D12836F586472A7D:L320-L336]
-- `ensure_index` now rebuilds stale or missing SQLite indexes and then builds semantic embeddings when semantic metadata or vectors are missing, stale, or model-mismatched; `search_ranges` asserts semantic readiness and always combines BM25 and semantic rankings with RRF. [kc:src_01KR8GD8XVCEYBW80M2SKVZVKS:L44-L58] [kc:src_01KR8GD8XVCEYBW80M2SKVZVKS:L231-L254]
-- `kc index build` no longer exposes `--semantic`; dry-run previews semantic model metadata, and real builds always run `build_semantic_index` after the SQLite rebuild. [kc:src_01KR8GD9CVD7PNQVA1KT2E73K6:L16-L39] [kc:src_01KR8GD9CVD7PNQVA1KT2E73K6:L40-L49]
-- `task resume` validates JSON payloads against a task's expected event schema before appending the resume event. [kc:src_9405FC69F97131789713475CFC:L50-L73] [kc:src_9405FC69F97131789713475CFC:L74-L97] [kc:src_9405FC69F97131789713475CFC:L140-L163]
-- Guide contracts now document usage errors, BM25 scoring, marker meanings, process exit aggregation, and eval/export behavior; `eval run` requires `--pack`, and export results identify whether content was emitted inline or to a file. [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L430-L453]
-- Guide contracts now list hybrid retrieval as the default, describe semantic retrieval activation as default hybrid retrieval plus `kc index build`, and remove `--mode`/`--semantic` from the command catalog. [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L37-L60] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L286-L309] [kc:src_01KR8Q47XCTWN53DZJ3BE8PD88:L310-L333]
-- Regression coverage includes invalid lint checks, empty lint checks, source search validation, stale-source warning propagation, artifact warnings, missing artifact/plan paths, usage envelopes, missing data-dir behavior, init idempotency, eval pack requirements, citation target requirements, task resume schema validation, hybrid search defaults, semantic index builds, context hybrid mode, checksum failures, and hard-removal usage errors for the old retrieval switches. [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L248-L252] [kc:src_01KR93GAQK523QMTD7E1FH7RPF:L254-L256] [kc:src_CA300356A8703AE94ACE629B8A:L44-L49] [kc:src_CA300356A8703AE94ACE629B8A:L51-L67] [kc:src_21D68E95E8C70C3E493EDF5AF4:L56-L58] [kc:src_21D68E95E8C70C3E493EDF5AF4:L60-L73] [kc:src_21D68E95E8C70C3E493EDF5AF4:L75-L80] [kc:src_21D68E95E8C70C3E493EDF5AF4:L83-L85] [kc:src_21D68E95E8C70C3E493EDF5AF4:L87-L102] [kc:src_21D68E95E8C70C3E493EDF5AF4:L105-L115] [kc:src_21D68E95E8C70C3E493EDF5AF4:L118-L120] [kc:src_21D68E95E8C70C3E493EDF5AF4:L122-L131]
-- Agent-skill regression coverage asserts `.agents` dry-run no-write behavior with planned skill/script paths, real init creation of `SKILL.md`, `agents/openai.yaml`, and `scripts/resolve_query_citations.py`, stale managed-skill and helper-script updates, custom skill preservation warnings, and idempotent noops. [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L65-L77] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L80-L95] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L98-L104] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L108-L114] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L117-L121] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L125-L129] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L380-L387]
-- Release documentation now defines the package version as `src/kc/__init__.py::__version__`, uses Hatch dynamic versioning from that file, requires `kc --version` and `kc guide` to report the same value, keeps `[Unreleased]` and current-version changelog sections, and classifies patch, minor, and major changes by compatibility impact. [kc:src_9F5299B94F508840AAB5A9A19B:L441-L445] [kc:src_AE85F8EDD94C03FD66CF2FE13D:L44-L49] [kc:src_CCBDF433DC72CF207BC924636B:L5-L6]
-- The versioning regression tests assert that `__version__` has a version-shaped value, `kc --version` prints it, `kc guide` returns it, `pyproject.toml` keeps `dynamic = ["version"]` with Hatch pointing at `src/kc/__init__.py`, and `CHANGELOG.md` contains both `[Unreleased]` and the current version. [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L47-L52] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L54-L56] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L59-L62]
+## Source-backed facts
+
+- Workspace resolution is centralized around `resolve_workspace()` and uses this order: `--root`, `KC_ROOT`, nearest `kc.toml`, nearest `.git`, then the current working directory. [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_8260B4DB354BB744CBFBCC3555:L7-L7] [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_14D656F332CF1B9C8629EAFA08:L11-L15]
+- `KcPaths` is now derived from the resolved workspace, and `current_workspace()` delegates to `resolve_workspace()`. [kc:src_A3CBFE85BE1E938A3881D3498B:rng_03E7EBFE94F9829D3F052ACFE6:L82-L83] [kc:src_A3CBFE85BE1E938A3881D3498B:rng_0CC223D8B49923F0529AEE6F29:L85-L85]
+- Source remediation made source IDs path-stable, added source revisions, made range IDs revision/content aware, added v2 citation parsing, and added deterministic citation rewrite and repair commands. [kc:src_619C5839E8A4DA088B64AC3D50:rng_E8A35DE72086B3A8719396C078:L606-L611] [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_13AB3B5E2BD0B3EC378C64DBAF:L57-L59]
+- Search results now expose a preferred v2 `citation_token` and a `legacy_citation_token`; when semantic ranking is unavailable, search and context preparation return FTS fallback results with `KC_RETRIEVAL_SEMANTIC_UNAVAILABLE`. [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_C7548F060183C9685922CD73F8:L65-L71] [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_338DBC697ADFC7023761C4D98B:L73-L75]
+- Mutating commands use a repo-level `repo-write` lock through `MutationTransaction`, and operation records are written under `.kc/operations/` using `kc.operation.v1`. [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_19C8F55C36090BBB34A50082E4:L79-L81]
+- Artifact diffs compare the current file against the last applied snapshot when one is available; if no snapshot exists, the baseline is explicitly unavailable. [kc:src_619C5839E8A4DA088B64AC3D50:rng_53D30452A46AA40D1DD6D73F78:L200-L203]
+- `kc context prepare --out` writes `kc.context_pack.v1` context packs with workspace data, candidate ranges, policies, agent instructions, validation commands, and next commands. [kc:src_01KR8GDA7V19F05T6R93ZAWZ35:rng_0C23A624C1080AFE4C762D396A:L156-L179]
+- Task workflows now expose the states `created`, `awaiting_agent`, `awaiting_validation`, `awaiting_apply`, `completed`, `blocked`, `cancelled`, and `failed`, and `kc task next` returns state-specific next commands. [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_D16F39DAE3FCF8CE5A4848E134:L95-L102] [kc:src_9405FC69F97131789713475CFC:rng_6913D8F400F7389C1F6FC1E4F2:L45-L61]
+- Eval packs use `kc.eval_pack.v1` and can assert expected source IDs, expected range IDs, required citation tokens, and minimum recall at k; `kc eval run --out` writes deterministic JSON with recall and MRR metrics. [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_192707A184A59B59159A972AB3:L109-L111]
+- The managed `.agents/skills/kc/` template generated by `kc init` now describes revisioned source ranges, durable context packs, citation rewrite and repair, safe artifact apply, retrieval evals, and durable task workflows; its bundled citation helper resolves both search and context results to original source URLs. [kc:src_9370460952EBB895BD9D56459D:rng_3B6E595A58EACFD66FAAE81FF0:L1-L4] [kc:src_45BE1182C784C25E06041CA5DD:rng_54E2DF4BAB89BB07443B4E739A:L1-L3]
 
 ## Inferences
 
-- The black-box feedback fixes are primarily command-contract hardening: they make failure modes machine-readable and predictable without expanding `kc` into a planner, workflow engine, or LLM provider integration. [kc:inference] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2210-L2213] [kc:src_01KR89M77M0SR209C87M6RKAY2:L2462-L2468]
-- Centralizing validators and store guards should reduce future contract drift between commands, because new commands can reuse the same structured error and warning helpers instead of hand-rolling envelope details. [kc:inference] [kc:src_90D0AC3379D12836F586472A7D:L48-L64] [kc:src_90D0AC3379D12836F586472A7D:L154-L156] [kc:src_90D0AC3379D12836F586472A7D:L296-L319]
-- Keeping the version value in one Python source and testing every published version surface should prevent build metadata, CLI output, and agent guide metadata from diverging during future releases. [kc:inference] [kc:src_9F5299B94F508840AAB5A9A19B:L441-L445] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L47-L52] [kc:src_01KR8W4S76SRDQKJDQ700PDTGG:L54-L56]
+- The remediation keeps `kc` provider-neutral because the new features strengthen deterministic contracts and local state handling rather than adding semantic generation. [kc:inference] [kc:src_619C5839E8A4DA088B64AC3D50:rng_E8A35DE72086B3A8719396C078:L606-L611]
+- Keeping `docs/contracts.md` registered as source evidence should make future command-contract changes easier to review because durable project claims can cite the frozen interfaces directly. [kc:inference] [kc:src_09976DA156B4DD4A7CA2F26EB4:rng_8260B4DB354BB744CBFBCC3555:L7-L7]
 
-## Open Questions
+## Open questions
 
-- [kc:todo] Decide separately whether historical log entries that reference untracked local plan files should be normalized, ignored as local history, or moved behind an explicit `lint --checks log` cleanup task.
+- [kc:todo] Decide whether future work should add `artifact history` and `artifact restore` commands on top of the new snapshot metadata.

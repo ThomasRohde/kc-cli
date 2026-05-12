@@ -13,13 +13,18 @@ from kc.ids import new_id
 from kc.models.citation import ArtifactLocator, CitationEdgeRecord, ParsedCitation
 from kc.models.source import SourceRecord
 from kc.models.source_range import SourceRangeRecord
+from kc.paths import resolve_repo_path
 from kc.store.jsonl import read_jsonl
 
 CITATION_RE = re.compile(
     r"\[kc:(?P<source>src_[A-Za-z0-9_]+):"
+    r"(?:(?P<range>rng_[A-Za-z0-9_]+)(?::"
+    r"(?:(?:L(?P<v2_line_start>\d+)-L(?P<v2_line_end>\d+))|"
+    r"(?:JP:(?P<v2_pointer>[^\]]+))|"
+    r"(?:CSV:R(?P<v2_row_start>\d+)-R(?P<v2_row_end>\d+))))?|"
     r"(?:(?:L(?P<line_start>\d+)-L(?P<line_end>\d+))|"
     r"(?:JP:(?P<pointer>[^\]]+))|"
-    r"(?:CSV:R(?P<row_start>\d+)-R(?P<row_end>\d+)))\]"
+    r"(?:CSV:R(?P<row_start>\d+)-R(?P<row_end>\d+))))\]"
 )
 KC_TOKEN_RE = re.compile(r"\[kc:[^\]]+\]")
 MARKER_RE = re.compile(r"\[kc:(inference|todo|uncited)\]")
@@ -29,25 +34,50 @@ def parse_markdown_citations(text: str) -> list[ParsedCitation]:
     parsed: list[ParsedCitation] = []
     for line_no, line in enumerate(text.splitlines(), start=1):
         for match in CITATION_RE.finditer(line):
-            if match.group("line_start") is not None:
+            range_id = match.group("range")
+            token_version = "v2" if range_id else "v1"
+            if range_id and not any(
+                match.group(name) is not None
+                for name in (
+                    "v2_line_start",
+                    "v2_pointer",
+                    "v2_row_start",
+                )
+            ):
                 parsed.append(
                     ParsedCitation(
                         token=match.group(0),
                         source_id=match.group("source"),
+                        range_id=range_id,
+                        token_version=token_version,
                         kind="line_range",
-                        start_line=int(match.group("line_start")),
-                        end_line=int(match.group("line_end")),
                         line=line_no,
                     )
                 )
                 continue
-            if match.group("pointer") is not None:
+            if (match.group("v2_line_start") or match.group("line_start")) is not None:
                 parsed.append(
                     ParsedCitation(
                         token=match.group(0),
                         source_id=match.group("source"),
+                        range_id=range_id,
+                        token_version=token_version,
+                        kind="line_range",
+                        start_line=int(match.group("v2_line_start") or match.group("line_start")),
+                        end_line=int(match.group("v2_line_end") or match.group("line_end")),
+                        line=line_no,
+                    )
+                )
+                continue
+            if (match.group("v2_pointer") or match.group("pointer")) is not None:
+                parsed.append(
+                    ParsedCitation(
+                        token=match.group(0),
+                        source_id=match.group("source"),
+                        range_id=range_id,
+                        token_version=token_version,
                         kind="json_pointer",
-                        pointer=unquote(match.group("pointer")),
+                        pointer=unquote(match.group("v2_pointer") or match.group("pointer")),
                         line=line_no,
                     )
                 )
@@ -56,9 +86,11 @@ def parse_markdown_citations(text: str) -> list[ParsedCitation]:
                 ParsedCitation(
                     token=match.group(0),
                     source_id=match.group("source"),
+                    range_id=range_id,
+                    token_version=token_version,
                     kind="csv_row_range",
-                    start_row=int(match.group("row_start")),
-                    end_row=int(match.group("row_end")),
+                    start_row=int(match.group("v2_row_start") or match.group("row_start")),
+                    end_row=int(match.group("v2_row_end") or match.group("row_end")),
                     line=line_no,
                 )
             )
@@ -91,6 +123,22 @@ def find_range_for_token(
     citation: ParsedCitation,
     ranges: list[SourceRangeRecord],
 ) -> SourceRangeRecord | None:
+    if citation.range_id:
+        for candidate in ranges:
+            if candidate.source_id != citation.source_id or candidate.range_id != citation.range_id:
+                continue
+            if citation.start_line is None and citation.pointer is None and citation.start_row is None:
+                return candidate
+            loc = candidate.locator
+            if loc.kind != citation.kind:
+                return None
+            if citation.kind == "line_range" and loc.start_line == citation.start_line and loc.end_line == citation.end_line:
+                return candidate
+            if citation.kind == "json_pointer" and loc.pointer == citation.pointer:
+                return candidate
+            if citation.kind == "csv_row_range" and loc.start_row == citation.start_row and loc.end_row == citation.end_row:
+                return candidate
+        return None
     for candidate in ranges:
         loc = candidate.locator
         if candidate.source_id != citation.source_id or loc.kind != citation.kind:
@@ -104,11 +152,24 @@ def find_range_for_token(
     return None
 
 
+def _previous_valid_edges(
+    citation_edges_path: Path | None,
+    artifact_path: str,
+) -> dict[str, CitationEdgeRecord]:
+    if citation_edges_path is None:
+        return {}
+    return {
+        edge.citation_token: edge
+        for edge in read_jsonl(citation_edges_path, CitationEdgeRecord)
+        if edge.artifact_path == artifact_path and edge.status == "valid"
+    }
+
+
 def _current_source_fingerprint(source: SourceRecord) -> str | None:
     original = source.metadata.get("original_path")
     if not isinstance(original, str):
         return None
-    path = Path.cwd() / original
+    path = resolve_repo_path(original)
     if not path.exists():
         return None
     return raw_fingerprint(path)
@@ -120,12 +181,14 @@ def validate_citations(
     *,
     sources_path: Path,
     ranges_path: Path,
+    citation_edges_path: Path | None = None,
     artifact_id: str | None = None,
 ) -> tuple[list[CitationEdgeRecord], list[dict[str, Any]]]:
     sources = read_jsonl(sources_path, SourceRecord)
     ranges = read_jsonl(ranges_path, SourceRangeRecord)
     source_by_id = {s.source_id: s for s in sources}
     parsed = parse_markdown_citations(artifact_text)
+    previous_edges = _previous_valid_edges(citation_edges_path, artifact_path)
     edges: list[CitationEdgeRecord] = []
     problems: list[dict[str, Any]] = invalid_markdown_citation_tokens(artifact_text)
     timestamp = datetime.now(UTC).isoformat()
@@ -184,6 +247,24 @@ def validate_citations(
                 }
             )
         else:
+            previous_edge = previous_edges.get(citation.token)
+            if (
+                citation.token_version == "v1"
+                and previous_edge is not None
+                and previous_edge.range_id
+                and previous_edge.range_id != range_record.range_id
+            ):
+                status = "stale_source"
+                problems.append(
+                    {
+                        "code": "KC_CITATION_STALE_SOURCE",
+                        "message": f"Legacy locator citation now resolves to different source text: {citation.token}",
+                        "line": citation.line,
+                        "token": citation.token,
+                        "previous_range_id": previous_edge.range_id,
+                        "current_range_id": range_record.range_id,
+                    }
+                )
             current_fingerprint = _current_source_fingerprint(source)
             if current_fingerprint is not None and current_fingerprint != source.fingerprint:
                 status = "stale_source"

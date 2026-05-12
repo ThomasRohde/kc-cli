@@ -73,6 +73,25 @@
           10
         ]
       },
+      "status": {
+        "command_id": "status",
+        "mutates": false,
+        "confirmation": "none",
+        "syntax": "kc status",
+        "important_options": [],
+        "result_summary": "Workspace initialization state, counts, index status, and next commands.",
+        "examples": [
+          "kc status",
+          "kc --format markdown status"
+        ],
+        "common_errors": [
+          "KC_CONFIG_INVALID"
+        ],
+        "exit_codes": [
+          0,
+          10
+        ]
+      },
       "source.add": {
         "command_id": "source.add",
         "mutates": true,
@@ -209,7 +228,7 @@
         ],
         "result_summary": "Grounded source context, artifact matches, citation policy, and next commands.",
         "examples": [
-          "kc context prepare --ask 'Create an ownership page' --shape knowledge_page"
+          "kc context prepare --ask 'Create an ownership page' --shape knowledge_page --out .kc/context/ownership.json"
         ],
         "common_errors": [
           "KC_INDEX_BUILD_FAILED",
@@ -356,6 +375,54 @@
           20
         ]
       },
+      "citation.rewrite": {
+        "command_id": "citation.rewrite",
+        "mutates": true,
+        "confirmation": "dry-run unless --yes",
+        "syntax": "kc citation rewrite --file PATH --dry-run|--yes",
+        "important_options": [
+          "--file",
+          "--dry-run",
+          "--yes"
+        ],
+        "result_summary": "Legacy locator citation replacements that resolve exactly to v2 range tokens.",
+        "examples": [
+          "kc citation rewrite --file knowledge/wiki/ownership.md --dry-run"
+        ],
+        "common_errors": [
+          "KC_ARTIFACT_NOT_FOUND",
+          "KC_CITATION_RANGE_MISSING"
+        ],
+        "exit_codes": [
+          0,
+          11,
+          20
+        ]
+      },
+      "citation.repair": {
+        "command_id": "citation.repair",
+        "mutates": true,
+        "confirmation": "dry-run unless --yes",
+        "syntax": "kc citation repair --file PATH --dry-run|--yes",
+        "important_options": [
+          "--file",
+          "--dry-run",
+          "--yes"
+        ],
+        "result_summary": "Deterministic repair candidates and exact mechanical citation rewrites.",
+        "examples": [
+          "kc citation repair --file knowledge/wiki/ownership.md --dry-run"
+        ],
+        "common_errors": [
+          "KC_ARTIFACT_NOT_FOUND",
+          "KC_CITATION_RANGE_MISSING"
+        ],
+        "exit_codes": [
+          0,
+          11,
+          20
+        ]
+      },
       "lint": {
         "command_id": "lint",
         "mutates": false,
@@ -435,6 +502,26 @@
         "result_summary": "Full stored task record.",
         "examples": [
           "kc task inspect --task-id task_01HX"
+        ],
+        "common_errors": [
+          "KC_TASK_NOT_FOUND"
+        ],
+        "exit_codes": [
+          0,
+          11
+        ]
+      },
+      "task.next": {
+        "command_id": "task.next",
+        "mutates": false,
+        "confirmation": "none",
+        "syntax": "kc task next --task-id TASK_ID",
+        "important_options": [
+          "--task-id"
+        ],
+        "result_summary": "State-specific expected event and next commands.",
+        "examples": [
+          "kc task next --task-id task_01HX"
         ],
         "common_errors": [
           "KC_TASK_NOT_FOUND"

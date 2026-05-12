@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -110,8 +112,56 @@ def test_init_updates_managed_agent_skill_files(tmp_path: Path, monkeypatch) -> 
     assert ".agents/skills/kc/SKILL.md" in payload["result"]["updated"]
     assert ".agents/skills/kc/scripts/resolve_query_citations.py" in payload["result"]["updated"]
     assert "# stale" not in skill.read_text(encoding="utf-8")
-    assert "answer natural-language queries with grounded citations" in skill.read_text(encoding="utf-8")
-    assert "Resolve kc source search results to original source URLs." in script.read_text(encoding="utf-8")
+    skill_text = skill.read_text(encoding="utf-8")
+    assert "answer natural-language queries with grounded citations" in skill_text
+    assert "kc --root <repo>" in skill_text
+    assert "kc status" in skill_text
+    assert "kc context prepare --ask" in skill_text
+    assert "kc citation repair --file" in skill_text
+    assert "kc eval run --pack" in skill_text
+    assert ".kc/operations/" in skill_text
+    assert "Resolve kc search or context results to original source URLs." in script.read_text(encoding="utf-8")
+
+
+def test_generated_citation_helper_accepts_context_prepare_output(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert runner.invoke(app, ["init", "--yes"]).exit_code == 0
+    source = tmp_path / "docs" / "policy.md"
+    source.parent.mkdir()
+    source.write_text(
+        "Source URL: https://example.test/policy\n\n"
+        "# Ownership\n\n"
+        "Capability owners approve policy changes and maintain lifecycle state.\n",
+        encoding="utf-8",
+    )
+    assert runner.invoke(app, ["source", "add", "docs/policy.md", "--domain", "policy", "--yes"]).exit_code == 0
+    context_result = runner.invoke(
+        app,
+        [
+            "context",
+            "prepare",
+            "--ask",
+            "Who approves policy changes?",
+            "--domain",
+            "policy",
+        ],
+    )
+    assert context_result.exit_code == 0
+    context_json = tmp_path / "context.json"
+    context_json.write_text(context_result.output, encoding="utf-8")
+    script = tmp_path / ".agents" / "skills" / "kc" / "scripts" / "resolve_query_citations.py"
+
+    helper = subprocess.run(
+        [sys.executable, str(script), str(context_json), "--repo-root", str(tmp_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    resolved = json.loads(helper.stdout)
+    assert resolved
+    assert resolved[0]["original_url"] == "https://example.test/policy"
+    assert resolved[0]["citation_token"].startswith("[kc:src_")
 
 
 def test_init_preserves_custom_agent_skill_files(tmp_path: Path, monkeypatch) -> None:

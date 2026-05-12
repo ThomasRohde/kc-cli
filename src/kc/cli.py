@@ -29,15 +29,19 @@ def _initialize_error_state(args: list[str]) -> None:
     state.format = requested_format if requested_format in {"json", "table", "markdown"} else "json"
     if is_llm_mode():
         state.format = "json"
+    state.root_override = _value_after(args, "--root")
+    state.data_dir = _value_after(args, "--data-dir")
+    state.state_dir = _value_after(args, "--state-dir")
     state.quiet = True
 
 
 def _command_id_from_args(args: list[str]) -> str:
-    value_opts = {"--format", "-f", "--data-dir", "--state-dir", "--request-id"}
+    value_opts = {"--format", "-f", "--root", "--data-dir", "--state-dir", "--request-id"}
     top_level = {
         "guide",
         "conformance",
         "init",
+        "status",
         "lint",
         "export",
         "source",
@@ -78,9 +82,9 @@ def _command_id_from_args(args: list[str]) -> str:
 class FlexibleGroup(TyperGroup):
     """Allow root global options before or after the first subcommand."""
 
-    _VALUE_OPTS = frozenset(("--format", "-f", "--data-dir", "--state-dir", "--request-id"))
+    _VALUE_OPTS = frozenset(("--format", "-f", "--root", "--data-dir", "--state-dir", "--request-id"))
     _FLAG_OPTS = frozenset(("--quiet", "-q", "--no-input", "--version", "-V"))
-    _VALUE_PREFIXES = ("--format=", "--data-dir=", "--state-dir=", "--request-id=")
+    _VALUE_PREFIXES = ("--format=", "--root=", "--data-dir=", "--state-dir=", "--request-id=")
 
     def main(
         self,
@@ -204,10 +208,13 @@ def main(
         str,
         typer.Option("--format", "-f", help="Output format: json, table, or markdown."),
     ] = "json",
+    root: Annotated[
+        str | None, typer.Option("--root", help="Workspace root override.")
+    ] = None,
     data_dir: Annotated[
-        str, typer.Option("--data-dir", help="Knowledge data directory.")
-    ] = "knowledge",
-    state_dir: Annotated[str, typer.Option("--state-dir", help="kc state directory.")] = ".kc",
+        str | None, typer.Option("--data-dir", help="Knowledge data directory override.")
+    ] = None,
+    state_dir: Annotated[str | None, typer.Option("--state-dir", help="kc state directory override.")] = None,
     quiet: Annotated[
         bool, typer.Option("--quiet", "-q", help="Suppress stderr diagnostics.")
     ] = False,
@@ -230,8 +237,11 @@ def main(
 ) -> None:
     del version
     init_request(request_id)
+    state.root_override = root
     state.data_dir = data_dir
     state.state_dir = state_dir
+    state.workspace_root = None
+    state.workspace_resolution_source = None
     state.no_input = no_input or is_llm_mode()
     if format not in {"json", "table", "markdown"}:
         from kc.errors import KcError
@@ -256,10 +266,12 @@ from kc.commands import export as export_command  # noqa: E402
 from kc.commands import guide as guide_command  # noqa: E402
 from kc.commands import init as init_command  # noqa: E402
 from kc.commands import lint as lint_command  # noqa: E402
+from kc.commands import status as status_command  # noqa: E402
 
 guide_command.register(app)
 conformance_command.register(app)
 init_command.register(app)
+status_command.register(app)
 lint_command.register(app)
 export_command.register(app)
 app.add_typer(source.app, name="source")

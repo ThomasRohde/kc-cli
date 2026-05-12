@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from importlib.resources import files
 from pathlib import Path
 from typing import Annotated, Any
@@ -12,6 +13,7 @@ from kc.config import DEFAULT_CONFIG
 from kc.output import emit_success, warning
 from kc.paths import current_paths, repo_relative
 from kc.store.sqlite import init_db
+from kc.store.transaction import mutation_transaction
 
 ALLOWED_PROFILES = {"generic"}
 MANAGED_AGENT_SKILL_MARKER = "kc-managed-agent-skill:v1"
@@ -123,12 +125,15 @@ def register(app: typer.Typer) -> None:
                 paths.snapshots_dir,
                 paths.plans_dir,
                 paths.tasks_dir,
+                paths.context_dir,
+                paths.operations_dir,
                 paths.state_dir / "cache",
                 paths.state_dir / "logs",
             ]
             files: dict[Path, str] = {
                 paths.config_path: DEFAULT_CONFIG,
                 paths.sources_jsonl: "",
+                paths.source_revisions_jsonl: "",
                 paths.ranges_jsonl: "",
                 paths.artifacts_jsonl: "",
                 paths.citation_edges_jsonl: "",
@@ -140,44 +145,52 @@ def register(app: typer.Typer) -> None:
             planned: list[str] = []
             updated: list[str] = []
             warnings: list[dict[str, Any]] = []
-            for d in dirs:
-                rel = repo_relative(d)
-                if d.exists():
-                    noop.append(rel)
+            transaction = (
+                nullcontext()
+                if effective_dry_run
+                else mutation_transaction(paths, "init", [paths.root])
+            )
+            with transaction as tx:
+                for d in dirs:
+                    rel = repo_relative(d)
+                    if d.exists():
+                        noop.append(rel)
+                    elif effective_dry_run:
+                        planned.append(rel)
+                    else:
+                        d.mkdir(parents=True, exist_ok=True)
+                        created.append(rel)
+                for path, content in files.items():
+                    rel = repo_relative(path)
+                    if path.exists():
+                        noop.append(rel)
+                    elif effective_dry_run:
+                        planned.append(rel)
+                    else:
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        atomic_write_text(path, content)
+                        created.append(rel)
+                for rel_path, content in _agent_skill_templates().items():
+                    _handle_managed_file(
+                        paths.root / rel_path,
+                        content,
+                        effective_dry_run=effective_dry_run,
+                        created=created,
+                        updated=updated,
+                        noop=noop,
+                        planned=planned,
+                        warnings=warnings,
+                    )
+                sqlite_rel = repo_relative(paths.sqlite_path)
+                if paths.sqlite_path.exists():
+                    noop.append(sqlite_rel)
                 elif effective_dry_run:
-                    planned.append(rel)
+                    planned.append(sqlite_rel)
                 else:
-                    d.mkdir(parents=True, exist_ok=True)
-                    created.append(rel)
-            for path, content in files.items():
-                rel = repo_relative(path)
-                if path.exists():
-                    noop.append(rel)
-                elif effective_dry_run:
-                    planned.append(rel)
-                else:
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    atomic_write_text(path, content)
-                    created.append(rel)
-            for rel_path, content in _agent_skill_templates().items():
-                _handle_managed_file(
-                    paths.root / rel_path,
-                    content,
-                    effective_dry_run=effective_dry_run,
-                    created=created,
-                    updated=updated,
-                    noop=noop,
-                    planned=planned,
-                    warnings=warnings,
-                )
-            sqlite_rel = repo_relative(paths.sqlite_path)
-            if paths.sqlite_path.exists():
-                noop.append(sqlite_rel)
-            elif effective_dry_run:
-                planned.append(sqlite_rel)
-            else:
-                init_db(paths.sqlite_path)
-                created.append(sqlite_rel)
+                    init_db(paths.sqlite_path)
+                    created.append(sqlite_rel)
+                if tx is not None:
+                    tx.commit({"created": created, "updated": updated})
             emit_success(
                 "init",
                 {

@@ -55,7 +55,11 @@ def ensure_index(db_path: Path, sources_path: Path, ranges_path: Path) -> None:
         or semantic_status["missing_vectors"]
         or semantic_status["stale_vectors"]
     ):
-        build_semantic_index(db_path, ranges)
+        try:
+            build_semantic_index(db_path, ranges)
+        except KcError as exc:
+            if exc.code != "KC_RETRIEVAL_MODEL_UNAVAILABLE":
+                raise
 
 
 def _build_fts_query(query: str) -> str:
@@ -63,15 +67,24 @@ def _build_fts_query(query: str) -> str:
     return " OR ".join(f'"{term}"' for term in terms)
 
 
-def citation_token(source_id: str, locator: dict[str, Any]) -> str:
+def citation_token(
+    source_id: str,
+    locator: dict[str, Any],
+    *,
+    range_id: str | None = None,
+    legacy: bool = False,
+) -> str:
+    prefix = f"[kc:{source_id}"
+    if range_id and not legacy:
+        prefix += f":{range_id}"
     if locator.get("kind") == "line_range":
-        return f"[kc:{source_id}:L{locator.get('start_line')}-L{locator.get('end_line')}]"
+        return f"{prefix}:L{locator.get('start_line')}-L{locator.get('end_line')}]"
     if locator.get("kind") == "json_pointer":
         pointer = quote(str(locator.get("pointer", "/")), safe="/~")
-        return f"[kc:{source_id}:JP:{pointer}]"
+        return f"{prefix}:JP:{pointer}]"
     if locator.get("kind") == "csv_row_range":
-        return f"[kc:{source_id}:CSV:R{locator.get('start_row')}-R{locator.get('end_row')}]"
-    return f"[kc:{source_id}]"
+        return f"{prefix}:CSV:R{locator.get('start_row')}-R{locator.get('end_row')}]"
+    return f"{prefix}]"
 
 
 def rrf_score(ranks: list[int], *, k: int = 60) -> float:
@@ -171,7 +184,8 @@ def _format_result(
             "hybrid_rank": hybrid_rank,
             "rrf_score": rank.rrf_score,
         },
-        "citation_token": citation_token(row["source_id"], locator),
+        "citation_token": citation_token(row["source_id"], locator, range_id=row["range_id"]),
+        "legacy_citation_token": citation_token(row["source_id"], locator, legacy=True),
         "source_authority": authority,
         "source_status": row["source_status"],
         "source_fingerprint": row["source_fingerprint"],
@@ -236,16 +250,29 @@ def search_ranges(
     limit: int = 10,
     rrf_k: int = 60,
     ranges: list[SourceRangeRecord] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     init_db(db_path)
     conn = _connect(db_path)
     try:
         candidate_limit = max(limit * 5, 100)
         source_ranges = ranges if ranges is not None else []
-        model = assert_semantic_index_ready(db_path, source_ranges)
-        semantic = semantic_rankings(conn, query, model, domain=domain, limit=candidate_limit)
         bm25 = _bm25_rankings(conn, query, domain=domain, limit=candidate_limit)
+        mode = "hybrid"
+        semantic_unavailable: str | None = None
+        try:
+            model = assert_semantic_index_ready(db_path, source_ranges)
+            semantic = semantic_rankings(conn, query, model, domain=domain, limit=candidate_limit)
+        except KcError as exc:
+            if exc.code != "KC_RETRIEVAL_MODEL_UNAVAILABLE":
+                raise
+            semantic = []
+            mode = "fts_fallback"
+            semantic_unavailable = exc.message
         combined = _combine_hybrid(bm25, semantic, rrf_k=rrf_k, limit=limit)
+        if metadata is not None:
+            metadata["mode"] = mode
+            metadata["semantic_unavailable_reason"] = semantic_unavailable
         rows = _rows_for_ranges(conn, [item.range_id for item in combined])
         results = []
         for hybrid_rank, item in enumerate(combined, start=1):

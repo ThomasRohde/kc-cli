@@ -254,3 +254,17 @@ def test_lint_rejects_unknown_or_empty_checks(tmp_path: Path, monkeypatch) -> No
     empty = runner.invoke(app, ["lint", "--checks", ""])
     assert empty.exit_code == 10
     assert parse(empty.output)["errors"][0]["code"] == "KC_VALIDATION_INVALID_ARGUMENT"
+
+
+def test_repo_write_lock_blocks_source_add(tmp_path: Path, monkeypatch) -> None:
+    init_repo(tmp_path, monkeypatch)
+    source = tmp_path / "locked.md"
+    source.write_text("locked write attempt\n", encoding="utf-8")
+    lock_dir = tmp_path / ".kc" / "locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    (lock_dir / "repo-write.lock").write_text('{"command":"test"}\n', encoding="utf-8")
+
+    result = runner.invoke(app, ["source", "add", "locked.md", "--yes"])
+
+    assert result.exit_code == 60
+    assert parse(result.output)["errors"][0]["code"] == "KC_LOCK_HELD"

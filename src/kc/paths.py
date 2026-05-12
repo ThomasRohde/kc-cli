@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from kc.errors import KcError
-from kc.output import state
 
 
 @dataclass(frozen=True)
@@ -26,6 +25,10 @@ class KcPaths:
     @property
     def ranges_jsonl(self) -> Path:
         return self.data_dir / "source_ranges.jsonl"
+
+    @property
+    def source_revisions_jsonl(self) -> Path:
+        return self.data_dir / "source_revisions.jsonl"
 
     @property
     def artifacts_jsonl(self) -> Path:
@@ -56,6 +59,14 @@ class KcPaths:
         return self.state_dir / "tasks"
 
     @property
+    def context_dir(self) -> Path:
+        return self.state_dir / "context"
+
+    @property
+    def operations_dir(self) -> Path:
+        return self.state_dir / "operations"
+
+    @property
     def wiki_dir(self) -> Path:
         return self.data_dir / "wiki"
 
@@ -65,12 +76,13 @@ class KcPaths:
 
 
 def current_paths() -> KcPaths:
-    root = Path.cwd().resolve()
-    return KcPaths(
-        root=root,
-        data_dir=(root / state.data_dir).resolve(),
-        state_dir=(root / state.state_dir).resolve(),
-    )
+    return current_workspace().paths
+
+
+def current_workspace():
+    from kc.workspace import resolve_workspace
+
+    return resolve_workspace()
 
 
 def ensure_data_dir_exists() -> KcPaths:
@@ -85,7 +97,7 @@ def ensure_data_dir_exists() -> KcPaths:
 
 
 def ensure_under_root(path: Path, root: Path | None = None) -> Path:
-    root = root or Path.cwd().resolve()
+    root = root or current_paths().root
     resolved = path.resolve()
     try:
         resolved.relative_to(root)
@@ -98,8 +110,16 @@ def ensure_under_root(path: Path, root: Path | None = None) -> Path:
     return resolved
 
 
+def resolve_repo_path(path: Path | str, root: Path | None = None) -> Path:
+    root = root or current_paths().root
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    return ensure_under_root(candidate.resolve(), root=root)
+
+
 def repo_relative(path: Path, root: Path | None = None) -> str:
-    root = root or Path.cwd().resolve()
+    root = root or current_paths().root
     try:
         return path.resolve().relative_to(root).as_posix()
     except ValueError:

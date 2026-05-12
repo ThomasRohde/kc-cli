@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -18,7 +17,7 @@ from kc.commands.common import (
 from kc.errors import EXIT_VALIDATION, KcError
 from kc.fingerprints import raw_fingerprint
 from kc.output import emit, emit_success, envelope
-from kc.paths import current_paths
+from kc.paths import current_paths, resolve_repo_path
 from kc.store.sqlite import index_status
 
 LOG_REF_RE = re.compile(r"\b(?P<kind>plan|task)_[A-Z0-9]+\b")
@@ -59,7 +58,7 @@ def register(app: typer.Typer) -> None:
                     original = source.metadata.get("original_path")
                     if not isinstance(original, str):
                         continue
-                    path = Path.cwd() / original
+                    path = resolve_repo_path(original, paths.root)
                     if not path.exists():
                         issues.append(
                             {
@@ -120,7 +119,7 @@ def register(app: typer.Typer) -> None:
                         )
 
             for artifact in artifacts:
-                artifact_path = Path.cwd() / artifact.path
+                artifact_path = resolve_repo_path(artifact.path, paths.root)
                 if "orphans" in enabled and not artifact_path.exists():
                     issues.append(
                         {
@@ -174,6 +173,7 @@ def register(app: typer.Typer) -> None:
                 "sources": len(sources),
                 "artifacts": len(artifacts),
                 "issues": issues,
+                "next_commands": _next_commands(issues),
             }
             if issues:
                 errors = [
@@ -217,3 +217,22 @@ def _duplicate_issues(field: str, values: list[str], code: str) -> list[dict]:
         }
         for value in sorted(duplicates)
     ]
+
+
+def _next_commands(issues: list[dict]) -> list[str]:
+    commands: set[str] = set()
+    for issue in issues:
+        code = issue.get("code")
+        if code == "KC_SOURCE_STALE" and issue.get("source_id"):
+            commands.add(f"kc source refresh {issue['source_id']} --dry-run")
+        elif code == "KC_INDEX_BUILD_FAILED":
+            commands.add("kc index build")
+        elif code in {"KC_CITATION_RANGE_MISSING", "KC_CITATION_STALE_SOURCE"}:
+            artifact_path = issue.get("artifact_path")
+            if artifact_path:
+                commands.add(f"kc citation repair --file {artifact_path} --dry-run")
+        elif code in {"KC_ARTIFACT_SCHEMA_INVALID", "KC_VALIDATION_MISSING_CITATION"}:
+            artifact_path = issue.get("artifact_path")
+            if artifact_path:
+                commands.add(f"kc artifact validate --file {artifact_path}")
+    return sorted(commands)

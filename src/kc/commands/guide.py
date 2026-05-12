@@ -66,7 +66,34 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
             ],
             "agent_rule": "The agent writes semantic content. kc validates, indexes, and applies safely.",
         },
+        "quickstart": {
+            "commands": [
+                "kc status",
+                "kc init --yes",
+                "kc source add docs/policy.md --domain policy --yes",
+                "kc source search 'ownership responsibilities' --domain policy",
+                "kc context prepare --ask 'Create ownership page' --target knowledge/wiki/ownership.md --out .kc/context/ownership.json",
+            ]
+        },
+        "troubleshooting": {
+            "commands": ["kc status", "kc doctor", "kc lint", "kc doctor locks"],
+            "common_next_commands": {
+                "uninitialized": "kc init --yes",
+                "stale_index": "kc index build",
+                "legacy_citations": "kc citation rewrite --file <artifact> --dry-run",
+            },
+        },
+        "agent_contract": {
+            "preferred_context": "kc context prepare --ask '<task>' --target <artifact> --out .kc/context/<id>.json",
+            "preferred_citations": "Use v2 citation_token values containing rng_ IDs.",
+            "task_loop": [
+                "kc task start --goal '<goal>' --target <artifact>",
+                "kc task next --task-id <id>",
+                "kc task resume --task-id <id> --event <expected> --input @event.json",
+            ],
+        },
         "global_options": {
+            "--root": {"default": "auto", "contract": "workspace root override; otherwise kc.toml/.git/cwd discovery"},
             "--format": {
                 "values": ["json", "table", "markdown"],
                 "default": "json",
@@ -101,14 +128,22 @@ def build_guide(section: str | None = None) -> dict[str, Any]:
         "commands": _commands(),
         "schemas": {
             "source": "kc.source.v1",
+            "source_revision": "kc.source_revision.v1",
             "source_range": "kc.source_range.v1",
             "artifact": "kc.artifact.v1",
             "citation_edge": "kc.citation_edge.v1",
+            "context_pack": "kc.context_pack.v1",
             "task": "kc.task.v1",
             "plan": "kc.plan.v1",
         },
         "citation_syntax": {
             "markdown": [
+                "[kc:src_<id>:rng_<id>]",
+                "[kc:src_<id>:rng_<id>:L<start>-L<end>]",
+                "[kc:src_<id>:rng_<id>:JP:<percent-encoded-json-pointer>]",
+                "[kc:src_<id>:rng_<id>:CSV:R<start>-R<end>]",
+            ],
+            "legacy_markdown": [
                 "[kc:src_<id>:L<start>-L<end>]",
                 "[kc:src_<id>:JP:<percent-encoded-json-pointer>]",
                 "[kc:src_<id>:CSV:R<start>-R<end>]",
@@ -267,6 +302,16 @@ def _commands() -> dict[str, Any]:
             common_errors=["KC_VALIDATION_INVALID_ARGUMENT", "KC_PATH_OUTSIDE_REPO", "KC_CONFIG_INVALID"],
             exit_codes=[0, 10],
         ),
+        "status": _command(
+            "kc status",
+            mutates=False,
+            confirmation="none",
+            important_options=[],
+            result_summary="Workspace initialization state, counts, index status, and next commands.",
+            examples=["kc status", "kc --format markdown status"],
+            common_errors=["KC_CONFIG_INVALID"],
+            exit_codes=[0, 10],
+        ),
         "source.add": _command(
             "kc source add FILE --domain DOMAIN --dry-run|--yes",
             mutates=True,
@@ -323,7 +368,7 @@ def _commands() -> dict[str, Any]:
             confirmation="none",
             important_options=["--ask", "--shape", "--domain", "--target", "--grounding", "--budget"],
             result_summary="Grounded source context, artifact matches, citation policy, and next commands.",
-            examples=["kc context prepare --ask 'Create an ownership page' --shape knowledge_page"],
+            examples=["kc context prepare --ask 'Create an ownership page' --shape knowledge_page --out .kc/context/ownership.json"],
             common_errors=["KC_INDEX_BUILD_FAILED", "KC_RETRIEVAL_MODEL_UNAVAILABLE"],
             exit_codes=[0, 30, 31],
         ),
@@ -377,6 +422,26 @@ def _commands() -> dict[str, Any]:
             common_errors=["KC_USAGE_ERROR", "KC_CITATION_INVALID_TOKEN", "KC_CITATION_RANGE_MISSING"],
             exit_codes=[0, 2, 20],
         ),
+        "citation.rewrite": _command(
+            "kc citation rewrite --file PATH --dry-run|--yes",
+            mutates=True,
+            confirmation="dry-run unless --yes",
+            important_options=["--file", "--dry-run", "--yes"],
+            result_summary="Legacy locator citation replacements that resolve exactly to v2 range tokens.",
+            examples=["kc citation rewrite --file knowledge/wiki/ownership.md --dry-run"],
+            common_errors=["KC_ARTIFACT_NOT_FOUND", "KC_CITATION_RANGE_MISSING"],
+            exit_codes=[0, 11, 20],
+        ),
+        "citation.repair": _command(
+            "kc citation repair --file PATH --dry-run|--yes",
+            mutates=True,
+            confirmation="dry-run unless --yes",
+            important_options=["--file", "--dry-run", "--yes"],
+            result_summary="Deterministic repair candidates and exact mechanical citation rewrites.",
+            examples=["kc citation repair --file knowledge/wiki/ownership.md --dry-run"],
+            common_errors=["KC_ARTIFACT_NOT_FOUND", "KC_CITATION_RANGE_MISSING"],
+            exit_codes=[0, 11, 20],
+        ),
         "lint": _command(
             "kc lint [--checks citations,stale,orphans,duplicates,index,log|all]",
             mutates=False,
@@ -414,6 +479,16 @@ def _commands() -> dict[str, Any]:
             important_options=["--task-id"],
             result_summary="Full stored task record.",
             examples=["kc task inspect --task-id task_01HX"],
+            common_errors=["KC_TASK_NOT_FOUND"],
+            exit_codes=[0, 11],
+        ),
+        "task.next": _command(
+            "kc task next --task-id TASK_ID",
+            mutates=False,
+            confirmation="none",
+            important_options=["--task-id"],
+            result_summary="State-specific expected event and next commands.",
+            examples=["kc task next --task-id task_01HX"],
             common_errors=["KC_TASK_NOT_FOUND"],
             exit_codes=[0, 11],
         ),

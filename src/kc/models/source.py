@@ -31,3 +31,7 @@ class SourceRecord(BaseModel):
     domain: list[str] = Field(default_factory=list)
     authority: Authority = Field(default_factory=Authority)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    canonical_source_key: str | None = None
+    current_revision_id: str | None = None
+    first_registered_at: str | None = None
+    last_refreshed_at: str | None = None

@@ -45,7 +45,13 @@ def is_text_like(path: Path, media_type: str) -> bool:
     return media_type.startswith("text/") or path.suffix.lower() in TEXT_EXTENSIONS
 
 
-def extract_ranges(path: Path, source_id: str, source_fingerprint: str) -> list[SourceRangeRecord]:
+def extract_ranges(
+    path: Path,
+    source_id: str,
+    source_fingerprint: str,
+    *,
+    revision_id: str | None = None,
+) -> list[SourceRangeRecord]:
     media_type = guess_media_type(path)
     if path.suffix.lower() == ".json":
         try:
@@ -53,35 +59,38 @@ def extract_ranges(path: Path, source_id: str, source_fingerprint: str) -> list[
                 json.loads(path.read_text(encoding="utf-8-sig")),
                 source_id,
                 source_fingerprint,
+                revision_id=revision_id,
             )
         except Exception:
-            return _extract_text_ranges(path, source_id, source_fingerprint)
+            return _extract_text_ranges(path, source_id, source_fingerprint, revision_id=revision_id)
     if path.suffix.lower() in {".yaml", ".yml"}:
         try:
             return _extract_structured_ranges(
                 yaml.safe_load(path.read_text(encoding="utf-8-sig")),
                 source_id,
                 source_fingerprint,
+                revision_id=revision_id,
             )
         except Exception:
-            return _extract_text_ranges(path, source_id, source_fingerprint)
+            return _extract_text_ranges(path, source_id, source_fingerprint, revision_id=revision_id)
     if path.suffix.lower() == ".toml":
         try:
             return _extract_structured_ranges(
                 tomllib.loads(path.read_text(encoding="utf-8-sig")),
                 source_id,
                 source_fingerprint,
+                revision_id=revision_id,
             )
         except Exception:
-            return _extract_text_ranges(path, source_id, source_fingerprint)
+            return _extract_text_ranges(path, source_id, source_fingerprint, revision_id=revision_id)
     if path.suffix.lower() == ".csv":
         try:
-            return _extract_csv_ranges(path, source_id, source_fingerprint)
+            return _extract_csv_ranges(path, source_id, source_fingerprint, revision_id=revision_id)
         except Exception:
-            return _extract_text_ranges(path, source_id, source_fingerprint)
+            return _extract_text_ranges(path, source_id, source_fingerprint, revision_id=revision_id)
     if not is_text_like(path, media_type):
         return []
-    return _extract_text_ranges(path, source_id, source_fingerprint)
+    return _extract_text_ranges(path, source_id, source_fingerprint, revision_id=revision_id)
 
 
 def _now() -> str:
@@ -92,15 +101,15 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text.split()))
 
 
-def _range_id(source_id: str, locator: Locator) -> str:
+def _range_id(source_id: str, revision_id: str | None, locator: Locator, excerpt_hash: str) -> str:
     digest = hashlib.sha256(
-        f"{source_id}:{locator.model_dump_json(exclude_none=True)}".encode()
+        f"{source_id}:{revision_id or ''}:{locator.model_dump_json(exclude_none=True)}:{excerpt_hash}".encode()
     ).hexdigest()
     return f"rng_{digest[:26].upper()}"
 
 
 def _extract_text_ranges(
-    path: Path, source_id: str, source_fingerprint: str
+    path: Path, source_id: str, source_fingerprint: str, *, revision_id: str | None = None
 ) -> list[SourceRangeRecord]:
     text = normalize_text(path.read_text(encoding="utf-8-sig"))
     lines = text.split("\n")
@@ -158,13 +167,15 @@ def _extract_text_ranges(
         if not excerpt:
             continue
         locator = Locator(kind="line_range", start_line=start_line, end_line=end_line)
+        excerpt_hash = text_hash(excerpt)
         records.append(
             SourceRangeRecord(
-                range_id=_range_id(source_id, locator),
+                range_id=_range_id(source_id, revision_id, locator, excerpt_hash),
                 source_id=source_id,
+                revision_id=revision_id,
                 source_fingerprint=source_fingerprint,
                 locator=locator,
-                text_hash=text_hash(excerpt),
+                text_hash=excerpt_hash,
                 excerpt=excerpt,
                 tokens_estimate=_estimate_tokens(excerpt),
                 extracted_at=extracted_at,
@@ -175,7 +186,11 @@ def _extract_text_ranges(
 
 
 def _extract_structured_ranges(
-    data: Any, source_id: str, source_fingerprint: str
+    data: Any,
+    source_id: str,
+    source_fingerprint: str,
+    *,
+    revision_id: str | None = None,
 ) -> list[SourceRangeRecord]:
     records: list[SourceRangeRecord] = []
     extracted_at = _now()
@@ -194,13 +209,15 @@ def _extract_structured_ranges(
             if not excerpt:
                 return
             locator = Locator(kind="json_pointer", pointer=pointer or "/")
+            excerpt_hash = text_hash(excerpt)
             records.append(
                 SourceRangeRecord(
-                    range_id=_range_id(source_id, locator),
+                    range_id=_range_id(source_id, revision_id, locator, excerpt_hash),
                     source_id=source_id,
+                    revision_id=revision_id,
                     source_fingerprint=source_fingerprint,
                     locator=locator,
-                    text_hash=text_hash(excerpt),
+                    text_hash=excerpt_hash,
                     excerpt=excerpt,
                     tokens_estimate=_estimate_tokens(excerpt),
                     extracted_at=extracted_at,
@@ -213,7 +230,11 @@ def _extract_structured_ranges(
 
 
 def _extract_csv_ranges(
-    path: Path, source_id: str, source_fingerprint: str
+    path: Path,
+    source_id: str,
+    source_fingerprint: str,
+    *,
+    revision_id: str | None = None,
 ) -> list[SourceRangeRecord]:
     text = path.read_text(encoding="utf-8-sig")
     rows = list(csv.reader(text.splitlines()))
@@ -229,13 +250,15 @@ def _extract_csv_ranges(
         }
         excerpt = json.dumps(values, ensure_ascii=False, sort_keys=True)
         locator = Locator(kind="csv_row_range", start_row=row_index, end_row=row_index)
+        excerpt_hash = text_hash(excerpt)
         records.append(
             SourceRangeRecord(
-                range_id=_range_id(source_id, locator),
+                range_id=_range_id(source_id, revision_id, locator, excerpt_hash),
                 source_id=source_id,
+                revision_id=revision_id,
                 source_fingerprint=source_fingerprint,
                 locator=locator,
-                text_hash=text_hash(excerpt),
+                text_hash=excerpt_hash,
                 excerpt=excerpt,
                 tokens_estimate=_estimate_tokens(excerpt),
                 extracted_at=extracted_at,

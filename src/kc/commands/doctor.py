@@ -7,7 +7,7 @@ import typer
 
 from kc.commands.common import load_ranges, load_sources, run
 from kc.output import emit_success
-from kc.paths import current_paths
+from kc.paths import current_paths, current_workspace
 from kc.search.semantic import semantic_index_status
 from kc.store.sqlite import index_status
 
@@ -20,12 +20,20 @@ def doctor(ctx: typer.Context) -> None:
         return
 
     def _run() -> None:
-        paths = current_paths()
+        workspace = current_workspace()
+        paths = workspace.paths
         ranges = load_ranges() if paths.ranges_jsonl.exists() else []
         sources = load_sources() if paths.sources_jsonl.exists() else []
         emit_success(
             "doctor",
             {
+                "workspace_resolution": {
+                    "root": workspace.root.as_posix(),
+                    "source": workspace.source,
+                    "project_id": workspace.config.project_id,
+                    "data_dir": paths.data_dir.as_posix(),
+                    "state_dir": paths.state_dir.as_posix(),
+                },
                 "config_exists": paths.config_path.exists(),
                 "data_dir_exists": paths.data_dir.exists(),
                 "state_dir_exists": paths.state_dir.exists(),

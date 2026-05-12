@@ -15,12 +15,21 @@ def build_artifact_plan(
     path: Path,
     *,
     registered_fingerprint: str | None,
+    baseline_path: Path | None = None,
     mode: str = "dry_run",
     idempotency_key: str | None = None,
-) -> tuple[PlanRecord, str]:
+) -> tuple[PlanRecord, str, dict[str, str | None]]:
     after = raw_fingerprint(path) if path.exists() else None
     before = registered_fingerprint
+    baseline: dict[str, str | None] = {"kind": "unavailable", "path": None, "fingerprint": before}
     old_lines: list[str] = []
+    if baseline_path is not None and baseline_path.exists():
+        old_lines = baseline_path.read_text(encoding="utf-8-sig").splitlines(keepends=True)
+        baseline = {
+            "kind": "last_applied_snapshot",
+            "path": baseline_path.as_posix(),
+            "fingerprint": raw_fingerprint(baseline_path),
+        }
     new_lines = (
         path.read_text(encoding="utf-8-sig").splitlines(keepends=True) if path.exists() else []
     )
@@ -29,7 +38,7 @@ def build_artifact_plan(
         old_label = "/dev/null"
     else:
         risk_flags = ["updates_existing_artifact"] if before != after else []
-        old_label = f"{path.as_posix()}@registry"
+        old_label = baseline_path.as_posix() if baseline_path is not None and baseline_path.exists() else f"{path.as_posix()}@registry"
     diff_text = "".join(
         difflib.unified_diff(
             old_lines,
@@ -64,4 +73,4 @@ def build_artifact_plan(
         ],
         risk_flags=risk_flags,
     )
-    return plan, diff_text
+    return plan, diff_text, baseline

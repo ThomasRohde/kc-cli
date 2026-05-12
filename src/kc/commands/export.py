@@ -16,7 +16,8 @@ from kc.commands.common import (
 )
 from kc.errors import KcError
 from kc.output import emit_success
-from kc.paths import ensure_under_root, repo_relative
+from kc.paths import current_paths, repo_relative, resolve_repo_path
+from kc.store.transaction import mutation_transaction
 
 
 def register(app: typer.Typer) -> None:
@@ -47,8 +48,11 @@ def register(app: typer.Typer) -> None:
                     details={"supported": ["jsonl", "markdown-bundle", "llms-txt"]},
                 )
             if out:
-                target = ensure_under_root((Path.cwd() / out).resolve())
-                atomic_write_text(target, content)
+                target = resolve_repo_path(out)
+                paths = current_paths()
+                with mutation_transaction(paths, "export", [target]) as tx:
+                    atomic_write_text(target, content)
+                    tx.commit({"out": repo_relative(target)})
             emit_success(
                 "export",
                 {
@@ -78,7 +82,7 @@ def _jsonl_export() -> str:
 def _markdown_bundle() -> str:
     parts = ["# kc Markdown Bundle\n"]
     for artifact in load_artifacts():
-        path = Path.cwd() / artifact.path
+        path = resolve_repo_path(artifact.path)
         if path.exists() and path.suffix.lower() in {".md", ".markdown"}:
             parts.append(f"\n<!-- artifact: {artifact.path} -->\n")
             parts.append(path.read_text(encoding="utf-8-sig"))

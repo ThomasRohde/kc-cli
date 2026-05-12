@@ -22,8 +22,11 @@ SCHEMA_VERSION = "kc.result.v1"
 class RuntimeState:
     format: str = "json"
     quiet: bool = False
-    data_dir: str = "knowledge"
-    state_dir: str = ".kc"
+    root_override: str | None = None
+    data_dir: str | None = None
+    state_dir: str | None = None
+    workspace_root: str | None = None
+    workspace_resolution_source: str | None = None
     request_id: str = ""
     no_input: bool = False
     start_time: float = 0.0
@@ -80,12 +83,15 @@ def envelope(
     metric_payload = {"duration_ms": duration_ms()}
     if metrics:
         metric_payload.update(metrics)
+    target_payload = dict(target or {})
+    if state.workspace_root and "workspace_root" not in target_payload:
+        target_payload["workspace_root"] = state.workspace_root
     return {
         "schema_version": SCHEMA_VERSION,
         "request_id": state.request_id,
         "ok": ok,
         "command": command,
-        "target": target or {},
+        "target": target_payload,
         "result": to_data(result),
         "warnings": warnings or [],
         "errors": errors or [],
@@ -370,6 +376,26 @@ def _init_summary(payload: dict[str, Any]) -> Summary:
     )
 
 
+@_renderer("status")
+def _status_summary(payload: dict[str, Any]) -> Summary:
+    result = payload["result"]
+    workspace = result.get("workspace") if isinstance(result.get("workspace"), dict) else {}
+    counts = result.get("counts") if isinstance(result.get("counts"), dict) else {}
+    rows = [{"next_command": command} for command in result.get("next_commands", [])]
+    return _summary(
+        "status",
+        [
+            ("initialized", result.get("initialized")),
+            ("workspace_root", workspace.get("root")),
+            ("resolution_source", workspace.get("resolution_source")),
+            ("sources", counts.get("sources")),
+            ("ranges", counts.get("ranges")),
+            ("artifacts", counts.get("artifacts")),
+        ],
+        rows,
+    )
+
+
 @_renderer("source.add")
 def _source_add_summary(payload: dict[str, Any]) -> Summary:
     result = payload["result"]
@@ -567,9 +593,38 @@ def _citation_check_summary(payload: dict[str, Any]) -> Summary:
     )
 
 
+@_renderer("citation.rewrite")
+def _citation_rewrite_summary(payload: dict[str, Any]) -> Summary:
+    result = payload["result"]
+    return _summary(
+        "citation.rewrite",
+        [
+            ("dry_run", result.get("dry_run")),
+            ("path", result.get("path")),
+            ("rewritten", result.get("rewritten")),
+            ("unresolved", result.get("unresolved")),
+        ],
+    )
+
+
+@_renderer("citation.repair")
+def _citation_repair_summary(payload: dict[str, Any]) -> Summary:
+    result = payload["result"]
+    return _summary(
+        "citation.repair",
+        [
+            ("dry_run", result.get("dry_run")),
+            ("path", result.get("path")),
+            ("applied", result.get("applied")),
+            ("unresolved", result.get("unresolved")),
+        ],
+    )
+
+
 @_renderer("lint")
 def _lint_summary(payload: dict[str, Any]) -> Summary:
     result = payload["result"]
+    rows = [{"next_command": command} for command in result.get("next_commands", [])]
     return _summary(
         "lint",
         [
@@ -579,6 +634,7 @@ def _lint_summary(payload: dict[str, Any]) -> Summary:
             ("artifacts", result.get("artifacts")),
             ("issues", _count(result.get("issues"))),
         ],
+        rows,
     )
 
 
@@ -632,6 +688,21 @@ def _task_inspect_summary(payload: dict[str, Any]) -> Summary:
     )
 
 
+@_renderer("task.next")
+def _task_next_summary(payload: dict[str, Any]) -> Summary:
+    result = payload["result"]
+    rows = [{"next_command": command} for command in result.get("next_commands", [])]
+    return _summary(
+        "task.next",
+        [
+            ("task_id", result.get("task_id")),
+            ("status", result.get("status")),
+            ("expected_event_name", result.get("expected_event_name")),
+        ],
+        rows,
+    )
+
+
 @_renderer("task.resume")
 def _task_resume_summary(payload: dict[str, Any]) -> Summary:
     result = payload["result"]
@@ -658,6 +729,7 @@ def _eval_run_summary(payload: dict[str, Any]) -> Summary:
 @_renderer("doctor")
 def _doctor_summary(payload: dict[str, Any]) -> Summary:
     result = payload["result"]
+    workspace = result.get("workspace_resolution") if isinstance(result.get("workspace_resolution"), dict) else {}
     index = result.get("index") if isinstance(result.get("index"), dict) else {}
     raw_last_build = index.get("last_build")
     last_build: dict[str, Any] = raw_last_build if isinstance(raw_last_build, dict) else {}
@@ -667,6 +739,8 @@ def _doctor_summary(payload: dict[str, Any]) -> Summary:
     return _summary(
         "doctor",
         [
+            ("workspace_root", workspace.get("root")),
+            ("workspace_source", workspace.get("source")),
             ("config_exists", result.get("config_exists")),
             ("data_dir_exists", result.get("data_dir_exists")),
             ("state_dir_exists", result.get("state_dir_exists")),

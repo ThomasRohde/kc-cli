@@ -42,9 +42,10 @@ from kc.models.artifact import ArtifactRecord, SourceRef
 from kc.models.citation import ArtifactLocator, CitationEdgeRecord
 from kc.models.plan import PlanRecord
 from kc.output import emit, emit_success, envelope, is_llm_mode, warning
-from kc.paths import current_paths, ensure_under_root, repo_relative
+from kc.paths import current_paths, ensure_under_root, repo_relative, resolve_repo_path
 from kc.provenance.citations import validate_citations
 from kc.store.sqlite import get_idempotency, rebuild_index, save_idempotency, save_plan
+from kc.store.transaction import mutation_transaction
 
 app = typer.Typer(help="Create, validate, diff, and safely apply knowledge artifacts.")
 
@@ -140,7 +141,7 @@ def new(
     yes: Annotated[bool, typer.Option("--yes", help="Write skeleton.")] = False,
 ) -> None:
     def _run() -> None:
-        target = ensure_under_root((Path.cwd() / path).resolve())
+        target = resolve_repo_path(path)
         validate_choice(artifact_type, option="--type", supported=ALLOWED_ARTIFACT_TYPES)
         validate_choice(status, option="--status", supported=ALLOWED_NEW_ARTIFACT_STATUSES)
         effective_dry_run = dry_run or not yes
@@ -160,7 +161,10 @@ def new(
             source_ids=list(source_id or []),
         )
         if not effective_dry_run:
-            atomic_write_text(target, content)
+            paths = current_paths()
+            with mutation_transaction(paths, "artifact.new", [target]) as tx:
+                atomic_write_text(target, content)
+                tx.commit({"path": repo_relative(target)})
         emit_success(
             "artifact.new",
             {
@@ -183,7 +187,7 @@ def validate_artifact_file(
     schema: str | None = None,
 ) -> dict[str, Any]:
     paths = current_paths()
-    target = ensure_under_root((Path.cwd() / file).resolve())
+    target = resolve_repo_path(file)
     if not target.exists():
             raise KcError(
                 code="KC_ARTIFACT_NOT_FOUND",
@@ -291,6 +295,7 @@ def validate_artifact_file(
             text,
             sources_path=paths.sources_jsonl,
             ranges_path=paths.ranges_jsonl,
+            citation_edges_path=paths.citation_edges_jsonl,
             artifact_id=frontmatter.get("artifact_id"),
         )
         errors.extend(citation_problems)
@@ -625,7 +630,7 @@ def diff(
     against: Annotated[str | None, typer.Option("--against", help="Comparison baseline: registry or HEAD.")] = None,
 ) -> None:
     def _run() -> None:
-        target = ensure_under_root((Path.cwd() / file).resolve())
+        target = resolve_repo_path(file)
         validate_choice(against, option="--against", supported={"registry", "HEAD"}, allow_none=True)
         if not target.exists():
             raise KcError(
@@ -634,9 +639,11 @@ def diff(
                 details={"path": repo_relative(target)},
             )
         existing = artifact_by_path(target)
-        plan, diff_text = build_artifact_plan(
+        baseline_path = _last_applied_snapshot_path(existing)
+        plan, diff_text, baseline = build_artifact_plan(
             target,
             registered_fingerprint=existing.fingerprint if existing else None,
+            baseline_path=baseline_path,
         )
         try:
             validation = validate_artifact_file(target)
@@ -651,11 +658,15 @@ def diff(
                     },
                 }
             )
+        baseline_result = dict(baseline)
+        if baseline_result.get("path"):
+            baseline_result["path"] = repo_relative(Path(str(baseline_result["path"])))
         emit_success(
             "artifact.diff",
             {
                 "plan": plan.model_dump(mode="json"),
                 "diff": diff_text,
+                "baseline": baseline_result,
                 "diff_path": None,
                 "risk_flags": plan.risk_flags,
             },
@@ -709,6 +720,18 @@ def _record_from_validation(
         source_refs=_source_refs_from_edges(edges),
         metadata={"compiled_by": "external_agent", "agent_tool": "kc-cli"},
     )
+
+
+def _last_applied_snapshot_path(existing: ArtifactRecord | None) -> Path | None:
+    if existing is None:
+        return None
+    snapshot = existing.metadata.get("last_applied_snapshot")
+    if not isinstance(snapshot, str):
+        return None
+    try:
+        return resolve_repo_path(snapshot)
+    except KcError:
+        return None
 
 
 def _enrich_plan(
@@ -797,11 +820,11 @@ def _target_from_plan_path(path: str) -> Path:
     candidate = Path(path)
     if candidate.is_absolute():
         return ensure_under_root(candidate)
-    return ensure_under_root((Path.cwd() / candidate).resolve())
+    return resolve_repo_path(candidate)
 
 
 def _load_plan_file(plan_file: Path) -> PlanRecord:
-    plan_path = ensure_under_root((Path.cwd() / plan_file).resolve())
+    plan_path = resolve_repo_path(plan_file)
     if not plan_path.exists():
         raise KcError(
             code="KC_FILE_NOT_FOUND",
@@ -951,8 +974,8 @@ def apply(
     ] = None,
 ) -> None:
     def _run() -> None:
-        cfg = load_config()
         paths = current_paths()
+        cfg = load_config(paths.root)
         if file is None and plan_file is None:
             raise KcError(
                 code="KC_ARTIFACT_NOT_FOUND",
@@ -960,7 +983,7 @@ def apply(
             )
         loaded_plan: PlanRecord | None = None
         if file is not None:
-            target = ensure_under_root((Path.cwd() / file).resolve())
+            target = resolve_repo_path(file)
         else:
             if plan_file is None:
                 raise KcError(
@@ -1041,14 +1064,16 @@ def apply(
                     "idempotency_key": idempotency_key or loaded_plan.idempotency_key,
                 }
             )
-            _discarded_plan, diff_text = build_artifact_plan(
+            _discarded_plan, diff_text, _baseline = build_artifact_plan(
                 target,
                 registered_fingerprint=existing.fingerprint if existing else None,
+                baseline_path=_last_applied_snapshot_path(existing),
             )
         else:
-            plan, diff_text = build_artifact_plan(
+            plan, diff_text, _baseline = build_artifact_plan(
                 target,
                 registered_fingerprint=existing.fingerprint if existing else None,
+                baseline_path=_last_applied_snapshot_path(existing),
                 mode="dry_run" if effective_dry_run else "apply",
                 idempotency_key=idempotency_key,
             )
@@ -1069,7 +1094,7 @@ def apply(
                 warnings=validation.get("warnings", []),
             )
 
-        with FileLock(
+        with mutation_transaction(paths, "artifact.apply", [target]) as repo_tx, FileLock(
             paths.locks_dir, path_lock_name(target), "artifact.apply", repo_relative(target)
         ):
             locked_fingerprint = raw_fingerprint(target)
@@ -1085,7 +1110,6 @@ def apply(
                 )
             artifact = _record_from_validation(target, validation, existing)
             artifacts = [a for a in load_artifacts() if a.path != artifact.path]
-            artifacts.append(artifact)
             edges = [
                 CitationEdgeRecord.model_validate(edge)
                 for edge in validation.get("citation_edges", [])
@@ -1102,6 +1126,16 @@ def apply(
             )
             snapshot_path = snapshot_dir / Path(artifact.path).name
             copy_snapshot(target, snapshot_path)
+            artifact = artifact.model_copy(
+                update={
+                    "metadata": {
+                        **artifact.metadata,
+                        "last_applied_snapshot": repo_relative(snapshot_path),
+                        "last_applied_plan_id": plan.plan_id,
+                    }
+                }
+            )
+            artifacts.append(artifact)
             state_snapshots = _snapshot_kc_state(snapshot_dir, paths)
             save_artifacts(sorted(artifacts, key=lambda a: a.path))
             save_citation_edges(all_edges)
@@ -1139,6 +1173,7 @@ def apply(
             }
             if idempotency_key:
                 save_idempotency(paths.sqlite_path, idempotency_key, plan.plan_id, result)
+            repo_tx.commit({"path": repo_relative(target), "plan_id": plan.plan_id})
             emit_success(
                 "artifact.apply",
                 result,

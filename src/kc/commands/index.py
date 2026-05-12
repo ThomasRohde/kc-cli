@@ -9,6 +9,7 @@ from kc.output import emit_success
 from kc.paths import current_paths
 from kc.search.semantic import build_semantic_index, load_semantic_model, semantic_model_metadata
 from kc.store.sqlite import index_status, rebuild_index
+from kc.store.transaction import mutation_transaction
 
 app = typer.Typer(help="Build or rebuild derived SQLite search indexes.")
 
@@ -34,18 +35,20 @@ def build(
                 "index": index_status(paths.sqlite_path, sources, ranges),
             }
         else:
-            result = rebuild_index(
-                paths.sqlite_path,
-                sources,
-                ranges,
-                load_artifacts(),
-                load_citation_edges(),
-            )
-            result["semantic"] = build_semantic_index(paths.sqlite_path, ranges)
-            result["dry_run"] = False
-            result["clean"] = clean
-            result["db_path"] = str(paths.sqlite_path)
-            result["index"] = index_status(paths.sqlite_path, sources, ranges)
+            with mutation_transaction(paths, "index.build", [paths.sqlite_path]) as tx:
+                result = rebuild_index(
+                    paths.sqlite_path,
+                    sources,
+                    ranges,
+                    load_artifacts(),
+                    load_citation_edges(),
+                )
+                result["semantic"] = build_semantic_index(paths.sqlite_path, ranges)
+                result["dry_run"] = False
+                result["clean"] = clean
+                result["db_path"] = str(paths.sqlite_path)
+                result["index"] = index_status(paths.sqlite_path, sources, ranges)
+                tx.commit({"db_path": str(paths.sqlite_path)})
         emit_success("index.build", result)
 
     run("index.build", _run)

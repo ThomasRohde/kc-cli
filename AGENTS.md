@@ -29,9 +29,9 @@ $env:PYTHONPATH='src'; python -m kc --help
 Useful checks:
 
 ```powershell
-pytest
-ruff check .
-pyright
+uv run pytest
+uv run ruff check .
+uv run pyright
 $env:PYTHONPATH='src'; python -m kc lint
 ```
 
@@ -61,6 +61,7 @@ Use `kc` to keep knowledge about the project itself current:
 - Do not re-add a source path that is already registered; use `kc source inspect <path>` and `kc lint` to detect stale registered sources.
 - Knowledge pages must keep material claims cited with `[kc:src_...]` tokens, mark synthesis with `[kc:inference]`, and leave unresolved work as `[kc:todo]`.
 - After editing knowledge artifacts, run `kc artifact validate --file <path>` and `kc lint`. Use `kc artifact diff --file <path>` before applying artifact changes when the workflow calls for it.
+- Keep `docs/contracts.md` aligned when changing workspace resolution, source/range identity, citation grammar, mutation transactions, context packs, task states, or eval pack schemas.
 
 If `kc lint` reports stale sources from unrelated user changes, do not overwrite those changes. Report the stale source IDs and continue with the requested work unless refreshing them is part of the task.
 

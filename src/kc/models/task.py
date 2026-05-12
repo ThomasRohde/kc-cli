@@ -9,7 +9,18 @@ class TaskRecord(BaseModel):
     schema_version: Literal["kc.task.v1"] = "kc.task.v1"
     task_id: str
     goal: str
-    status: Literal["awaiting_agent", "completed", "cancelled", "failed"] = "awaiting_agent"
+    status: Literal[
+        "created",
+        "awaiting_agent",
+        "awaiting_validation",
+        "awaiting_apply",
+        "completed",
+        "blocked",
+        "cancelled",
+        "failed",
+    ] = "awaiting_agent"
+    context_pack_id: str | None = None
+    context_pack_path: str | None = None
     created_at: str
     updated_at: str
     shape: str = "knowledge_page"

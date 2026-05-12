@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # kc-managed-agent-skill:v1
-"""Resolve kc source search results to original source URLs.
+"""Resolve kc search or context results to original source URLs.
 
 Reads a kc JSON result from a file or stdin and prints compact JSON records
 with source ids, line ranges, local snapshot paths, and original URLs parsed
@@ -76,8 +76,13 @@ def results(payload: dict[str, Any]) -> list[dict[str, Any]]:
     items = result.get("results")
     if isinstance(items, list):
         return items
+    items = result.get("candidate_ranges")
+    if isinstance(items, list):
+        return items
     if isinstance(payload.get("results"), list):
         return payload["results"]
+    if isinstance(payload.get("candidate_ranges"), list):
+        return payload["candidate_ranges"]
     return []
 
 
