@@ -7,6 +7,12 @@ This project uses Semantic Versioning for the Python package version exposed by
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-12
+
+### Changed
+
+- Bumped the package version for the next minor release.
+
 ## [0.3.0] - 2026-05-12
 
 ### Added
